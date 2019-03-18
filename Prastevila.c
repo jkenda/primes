@@ -1,42 +1,69 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <pthread.h>
+#include <unistd.h>
+
+int prastevilo_max;
+int *eratosten;
+int stPrastevil;
+int i;
+long time_z;
+
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// nit za izpisovanje
+void *izpisi(void* param) {
+  while (i < prastevilo_max) {
+    sleep(1);
+    printf("%d / 1000, %ld s\r", (int) ((float) i / prastevilo_max * 1000), time(NULL) - time_z);
+    fflush(stdout);
+  }
+  return NULL;
+}
 
 int main(int argc, char *argv[]) {
-  int velikost = strtol(argv[1], NULL, 10);
-  int *eratosten;
-  eratosten = (int*) malloc(velikost/10 * sizeof(int));
+  prastevilo_max = strtol(argv[1], NULL, 10);
+  eratosten = (int*) malloc(prastevilo_max/10 * sizeof(int));
   if (eratosten == NULL) {
     printf("Napaka: premalo pomnilnika.\n");
     exit(1);
   }
-  int stPrastevil = 1;
-  eratosten[0] = 1;
-  int time_z = time(NULL);
-  for (int i = 2; i <= velikost; i++) {
+  stPrastevil = 1;
+  eratosten[0] = 2;
+  pthread_t thread;
+  time_z = time(NULL);
+  pthread_create(&thread, NULL, izpisi, NULL);
+  i = 2;
+  while (i <= prastevilo_max) {
     int stDeliteljev = 0;
     for (int j = 0; j < stPrastevil; j++) {
-      if (stDeliteljev > 2) break;
+      if (stDeliteljev != 0) break;
       else if (i % eratosten[j] == 0) stDeliteljev += 1;
     }
-    if(stDeliteljev < 2) {
+    if(stDeliteljev == 0) {
       eratosten[stPrastevil] = i;
       stPrastevil += 1;
     }
-    if ((int) ((float) i / velikost * 10000) % 10 == 0) {
-      printf("%d / 1000\r", (int) ((float) i / velikost * 1000));
-    }
+    pthread_mutex_lock(&mutex);
+    i++;
+    pthread_mutex_unlock(&mutex);
   }
-  printf("\nPraštevil do %d je %d\nZapisovanje ...\n", velikost, stPrastevil);
+  pthread_join(thread, NULL);
+  printf("Praštevil do %d je %d\nZapisovanje ...\n", prastevilo_max, stPrastevil);
 
   FILE *f;
   f = fopen("Prastevila-izpis.txt", "w");
-  fprintf(f, "Praštevil do %d je %d\n", velikost, stPrastevil);
-  for (int i = 1; i < stPrastevil; i++) {
-    fprintf(f, "%d ", eratosten[i]);
-  }
+  fprintf(f, "\nPraštevil do %d je %d.\n", prastevilo_max, stPrastevil);
+  for (int i = 1; i < stPrastevil-1; i++) fprintf(f, "%d, ", eratosten[i]);
+  fprintf(f, "%d\n", eratosten[stPrastevil-1]);
   free(eratosten);
   fclose(f);
-  printf("Končano. Čas: %ld s\n", time(NULL) - time_z);
+  int s = time(NULL) - time_z;
+  int h = s / 3600;
+  s %= 3600;
+  int m = s / 60;
+  s %= 60;
+  printf("Končano. Čas: %dh, %dm, %ds\n", h, m, s);
   return 0;
 }
