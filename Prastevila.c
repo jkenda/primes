@@ -23,19 +23,19 @@ void *izpisi(void* param) {
   int s, h, m;
   while (i < prastevilo_max) {
     sleep(1);
-
     s = time(NULL) - time_z;
     h = s / 3600;
     s %= 3600;
     m = s / 60;
     s %= 60;
-    printf("%d / 1000, %dh, %dm %ds\r", (int) ((float) i / prastevilo_max * 1000), h, m, s);
+    printf("%d / 1000, %dh %dm %ds\r", (int) ((float) i / prastevilo_max * 1000), h, m, s);
     fflush(stdout);
   }
   pthread_exit(0);
   return NULL;
 }
 
+// niti za preverjanje števil
 void *racunaj(void *param) {
   int *nit = param;
   int check;
