@@ -52,6 +52,7 @@ int main() {
   eratosten = (unsigned int*) malloc(pomnilnik * sizeof(unsigned int));
   /* preberi že izračunana praštevila iz datoteke */
   stPrastevil = 0;
+  int stZapisanih;
   FILE *f;
   printf("Odpiram datoteko ...\r"); fflush(stdout);
   f = fopen("Prastevila-izpis.txt", "r");
@@ -65,9 +66,14 @@ int main() {
     fclose(f);
     printf("Datoteka prebrana.   "); fflush(stdout);
     stPrastevil -= 1; // Brez EOF (0)
+    stZapisanih = stPrastevil;
+  }
+  else {
+    eratosten[0] = 2;
+    stPrastevil = 1;
+    stZapisanih = 0;
   }
   printf("\b\bŠt. praštevil: %d (do %u)\n", stPrastevil, eratosten[stPrastevil - 1]); //debugging
-  int stZapisanih = stPrastevil + 1;
 
   printf("Ali želite nadaljevati? [Y/n] ");
   char nadaljujem = getchar();
@@ -83,10 +89,10 @@ int main() {
   while (stPrastevil <= pomnilnik && !izhod) {
     stDeliteljev = 0;
     for (int j = 0; j < stPrastevil; j++) {
-      if (stDeliteljev >= 2) break;
+      if (stDeliteljev >= 1) break;
       if (i % eratosten[j] == 0) stDeliteljev++;
     }
-    if(stDeliteljev < 2) {
+    if(stDeliteljev == 0) {
       eratosten[stPrastevil] = i;
       stPrastevil++;
     }
@@ -99,7 +105,7 @@ int main() {
   fflush(stdout);
   /* zapiši na novo izračuana praštevila */
   f = fopen("Prastevila-izpis.txt", "a");
-  for (int i = stZapisanih + 1; i < stPrastevil; i++) fprintf(f, "%d, ", eratosten[i]);
+  for (int i = stZapisanih; i < stPrastevil; i++) fprintf(f, "%d, ", eratosten[i]);
   free(eratosten); fclose(f); // sprosti pomnilnik, zapri datoteko
   /* izračunaj porabljen čas v H, M, S */
   int s = time(NULL) - time_z;
