@@ -21,7 +21,7 @@ pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 void *izpisi(void* param) {
   while (!izhod) {
     sleep(1);
-    printf("%d (%d / 1000), %ld s          \r", i, (int) ((float) i / pomnilnik * 1000),
+    printf("\r%d (%d / 1000), %ld s", i, (int) ((float) i / pomnilnik * 1000),
                                            time(NULL) - time_z);
     fflush(stdout);
   }
@@ -95,7 +95,7 @@ int main() {
     pthread_mutex_unlock(&mutex);
   }
   izhod = true; pthread_cancel(thread);
-  printf("\rPraštevil do %d je %d\nZapisovanje ...\r", eratosten[stPrastevil - 1], stPrastevil);
+  printf("\rPraštevil do %d je %d         \nZapisovanje ...\r", eratosten[stPrastevil - 1], stPrastevil);
   fflush(stdout);
   /* zapiši na novo izračuana praštevila */
   f = fopen("Prastevila-izpis.txt", "a");
