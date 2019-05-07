@@ -52,8 +52,8 @@ unsigned long vrniPomnilnik() {
   return pages * page_size;
 }
 
-const char* vrniVelikost(long bytes) {
-  static char velikost_enota[9];
+char* vrniVelikost(long bytes) {
+  static char velikost_enota[8];
   char enota[3] = "B";
   if (bytes >= 1000) {
     bytes /= 1000; strcpy(enota, "kB");
@@ -64,8 +64,28 @@ const char* vrniVelikost(long bytes) {
   if (bytes >= 1000) {
     bytes /= 1000; strcpy(enota, "GB");
   }
-  sprintf(velikost_enota, "%d %s", (unsigned short) bytes, enota);
+  sprintf(velikost_enota, "%d %s", (unsigned char) bytes, enota);
   return velikost_enota;
+}
+
+char* je_sta_so(unsigned char stevilo) {
+  static char beseda[4];
+  if (stevilo == 2) sprintf(beseda, "sta");
+  else if (stevilo == 3 || stevilo == 4) strcpy(beseda, "so");
+  else strcpy(beseda, "je");
+  return beseda;
+}
+
+char* d_h_m_s(int s) {
+  static char cas[23];
+  int d = s / 86400; s %= 86400;
+  int h = s / 3600; s %= 3600;
+  int m = s / 60; s %= 60;
+  if (d > 0)      sprintf(cas, "%dd %dh %dm %ds", d, h, m, s);
+  else if (h > 0) sprintf(cas, "%dh %dm %ds", h, m, s);
+  else if (m > 0) sprintf(cas, "%dm %ds", m, s);
+  else            sprintf(cas, "%ds", s);
+  return cas;
 }
 
 /* nit za izpisovanje */
@@ -73,8 +93,8 @@ void *izpisi(void* param) {
   int trenutnaSt;
   while (!izhod) {
     lock(&kandidat_lock); trenutnaSt = kandidat; unlock(&kandidat_lock);
-    printf("\r%d (%d / 1000), %ld s", kandidat, (int) (trenutnaSt * 1000 / pomnilnik),
-          time(NULL) - time_z);
+    printf("\r%d (%d / 1000), %s", kandidat, (int) (trenutnaSt * 1000 / pomnilnik),
+          d_h_m_s(time(NULL) - time_z));
     fflush(stdout);
     sleep(1);
   }
@@ -129,9 +149,7 @@ int main(int argc, char **args) {
           pomnilnik, vrniVelikost(pomnilnik * sizeof(unsigned int)));
 
   /* slovnica 😃 */
-  char je_sta_so[4]; if (ST_NITI == 2) strcpy(je_sta_so, "sta");
-  else if (ST_NITI == 3 || ST_NITI == 4) strcpy(je_sta_so, "so"); else strcpy(je_sta_so, "je");
-  printf("Na voljo %s %hu niti za računanje.\n", je_sta_so, ST_NITI);
+  printf("Na voljo %s %hu niti za računanje.\n", je_sta_so(ST_NITI), ST_NITI);
 
   /* dodeli vse razen 10 % Eratostenovenu rešetu */
   eratosten = (unsigned int*) malloc(pomnilnik * sizeof(unsigned int));
@@ -168,6 +186,7 @@ int main(int argc, char **args) {
   printf("\rUstvarjam niti ...\r"); fflush(stdout);
 
   /* inicializiraj in zaženi nit za izpisovanje */
+  time_z = time(NULL);
   pthread_t izpisovalnik;
   pthread_create(&izpisovalnik, NULL, izpisi, NULL);
 
@@ -203,20 +222,14 @@ int main(int argc, char **args) {
   }
 
   /* ob končanem izvajanju */
-  unsigned int time_k = time(NULL);
+  unsigned long time_k = time(NULL);
   izhod = true; pthread_cancel(izpisovalnik); for (int n = 0; n < ST_NITI; n++) pthread_cancel(racunanje[n]);
   printf("\rPraštevil do %d je %d         \nZapisovanje ...\r", eratosten[stPrastevil - 1], stPrastevil);
   fflush(stdout);
   /* zapiši na novo izračuana praštevila */
   f = fopen("Prastevila-izpis.txt", "a");
-  for (int kandidat = stZapisanih; kandidat < stPrastevil; kandidat++) fprintf(f, "%d, ", eratosten[kandidat]);
+  for (int i = stZapisanih; i < stPrastevil; i++) fprintf(f, "%d, ", eratosten[i]);
   free(eratosten); fclose(f); // sprosti pomnilnik, zapri datoteko
-  /* izračunaj porabljen čas v H, M, S */
-  int s = time_k - time_z;
-  int h = s / 3600;
-  s %= 3600;
-  int m = s / 60;
-  s %= 60;
-  printf("Končano. Čas: %dh, %dm, %ds\n", h, m, s);
+  printf("Končano. Čas: %s\n", d_h_m_s(time_k - time_z));
   return 0;
 }
