@@ -38,14 +38,18 @@ unsigned long getTotalSystemMemory() {
   return pages * page_size;
 }
 
-int main() {
+int main(int argc, char* args[]) {
   /* ctrl + C */
   signal(SIGINT, ctrlC);
-  /* preveri, koliko pomnilnika je na voljo */
-  printf("Štejem, koliko pomnilnika je na voljo ...\r"); fflush(stdout);
-  pomnilnik = getTotalSystemMemory() / sizeof(unsigned int);
-  pomnilnik -= pomnilnik / 10;
-
+  if (argc > 1) {
+    pomnilnik = strtol(args[1], NULL, 10);
+  }
+  else {
+    /* preveri, koliko pomnilnika je na voljo */
+    printf("Štejem, koliko pomnilnika je na voljo ...\r"); fflush(stdout);
+    pomnilnik = getTotalSystemMemory() / sizeof(unsigned int);
+    pomnilnik -= pomnilnik / 10;
+  }
   printf("V pomnilniku je prostora za %ld praštevil (%f GB).\n", pomnilnik,
           (float) pomnilnik * sizeof(unsigned int) / 1000000000);
   /* dodeli vse razen 10 % Eratostenovenu rešetu */
@@ -86,10 +90,11 @@ int main() {
   /* začni računati praštevila */
   int stDeliteljev;
   i = stPrastevil + 1;
-  while (stPrastevil <= pomnilnik && !izhod) {
+  time_z = time(NULL);
+  while (stPrastevil < pomnilnik && !izhod) {
     stDeliteljev = 0;
     for (int j = 0; j < stPrastevil; j++) {
-      if (stDeliteljev >= 1) break;
+      if (stDeliteljev > 0) break;
       if (i % eratosten[j] == 0) stDeliteljev++;
     }
     if(stDeliteljev == 0) {
@@ -100,6 +105,7 @@ int main() {
     i++;
     pthread_mutex_unlock(&mutex);
   }
+  unsigned long time_k = time(NULL);
   izhod = true; pthread_cancel(thread);
   printf("\rPraštevil do %d je %d         \nZapisovanje ...\r", eratosten[stPrastevil - 1], stPrastevil);
   fflush(stdout);
@@ -108,7 +114,7 @@ int main() {
   for (int i = stZapisanih; i < stPrastevil; i++) fprintf(f, "%d, ", eratosten[i]);
   free(eratosten); fclose(f); // sprosti pomnilnik, zapri datoteko
   /* izračunaj porabljen čas v H, M, S */
-  int s = time(NULL) - time_z;
+  int s = time_k - time_z;
   int h = s / 3600;
   s %= 3600;
   int m = s / 60;
