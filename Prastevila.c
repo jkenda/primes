@@ -17,16 +17,12 @@
 #define cond_wait      pthread_cond_wait
 
 bool izhod = false;
-unsigned int i, *eratosten, stPrastevil, stDeliteljev, napaka;
+unsigned char ST_NITI, stIzracunanih;
+unsigned  int kandidat, *eratosten, stPrastevil, stDeliteljev, napaka;
 unsigned long pomnilnik, time_z;
-unsigned short ST_NITI, stIzracunanih;
 
-pthread_mutex_t i_lock = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t stDeliteljevLock = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t izracunano_lock = PTHREAD_MUTEX_INITIALIZER;
-
-pthread_cond_t izracunaj = PTHREAD_COND_INITIALIZER;
-pthread_cond_t izracunano = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t kandidat_lock, stDeliteljevLock, izracunano_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t izracunaj, izracunano = PTHREAD_COND_INITIALIZER;
 
 void sigFPE() {
   printf("\nNAPAKA! Prišlo je do preliva (ali deljenja z 0).\n");
@@ -46,78 +42,96 @@ void sigSEGV() {
   stPrastevil--;
 }
 
+void ctrlC() {
+  izhod = true;
+}
+
+unsigned long vrniPomnilnik() {
+  long pages = sysconf(_SC_PHYS_PAGES);
+  long page_size = sysconf(_SC_PAGE_SIZE);
+  return pages * page_size;
+}
+
+const char* vrniVelikost(long bytes) {
+  static char velikost_enota[9];
+  char enota[3] = "B";
+  if (bytes >= 1000) {
+    bytes /= 1000; strcpy(enota, "kB");
+  }
+  if (bytes >= 1000) {
+    bytes /= 1000; strcpy(enota, "MB");
+  }
+  if (bytes >= 1000) {
+    bytes /= 1000; strcpy(enota, "GB");
+  }
+  sprintf(velikost_enota, "%d %s", (unsigned short) bytes, enota);
+  return velikost_enota;
+}
+
 /* nit za izpisovanje */
 void *izpisi(void* param) {
   int trenutnaSt;
   while (!izhod) {
-    lock(&i_lock); trenutnaSt = i; unlock(&i_lock);
-    printf("\r%d (%d / 1000), %ld s", i, (int) (trenutnaSt * 1000 / pomnilnik),
-                                           time(NULL) - time_z);
+    lock(&kandidat_lock); trenutnaSt = kandidat; unlock(&kandidat_lock);
+    printf("\r%d (%d / 1000), %ld s", kandidat, (int) (trenutnaSt * 1000 / pomnilnik),
+          time(NULL) - time_z);
     fflush(stdout);
     sleep(1);
   }
   return NULL;
 }
 
-void ctrlC() {
-  izhod = true;
-}
-
-unsigned long getTotalSystemMemory() {
-  long pages = sysconf(_SC_PHYS_PAGES);
-  long page_size = sysconf(_SC_PAGE_SIZE);
-  return pages * page_size;
-}
-
 void *racunaj(void* nit) {
-  unsigned short *idNiti = (unsigned short*) nit;
+  unsigned char *idNiti = (unsigned char*) nit;
+
   while (stPrastevil < pomnilnik && !izhod) {
     lock(&izracunano_lock);
     while(stIzracunanih == ST_NITI) cond_wait(&izracunaj, &izracunano_lock);
     unlock(&izracunano_lock);
-    // printf("Začeta nit %hu\n", *idNiti); // debugging
     for (int j = *idNiti; j < stPrastevil; j += ST_NITI) {
       lock(&stDeliteljevLock);
+      if (kandidat % eratosten[j] == 0) {
+        stDeliteljev++;
+      }
       if (stDeliteljev > 0) {
         unlock(&stDeliteljevLock);
         break;
-      }
-      if (i % eratosten[j] == 0) {
-        stDeliteljev++;
       }
       unlock(&stDeliteljevLock);
     }
     lock(&izracunano_lock);
     stIzracunanih++;
-    // printf("Končana nit %hu, %hu\n", *idNiti, stIzracunanih); // debugging
     if (stIzracunanih == ST_NITI) cond_signal(&izracunano);
     unlock(&izracunano_lock);
   }
   return NULL;
 }
 
-int main() {
+int main(int argc, char **args) {
   /* ctrl + C, terminate */
-  signal(SIGINT, ctrlC); signal(SIGTERM, ctrlC);
+  signal(SIGINT, ctrlC); //signal(SIGTERM, ctrlC);
   /* handlanje napak */
   // signal(SIGFPE, sigFPE); signal(SIGILL, sigILL); signal(SIGSEGV, sigSEGV);
 
-  /* preveri, koliko pomnilnika je na voljo */
-  printf("Štejem, koliko pomnilnika je na voljo ...\r"); fflush(stdout);
-  pomnilnik = getTotalSystemMemory() / sizeof(unsigned int);
-  pomnilnik -= pomnilnik / 10; // pusti 10 %
+  if (argc > 1) pomnilnik = strtol(args[1], NULL, 10);
+  else {
+    /* preveri, koliko pomnilnika je na voljo */
+    printf("Štejem, koliko pomnilnika je na voljo ...\r"); fflush(stdout);
+    pomnilnik = vrniPomnilnik() / sizeof(unsigned int);
+    pomnilnik -= pomnilnik / 10; // pusti 10 %
+  }
 
   /* preveri, koliko niti je na voljo */
-  ST_NITI = get_nprocs() - 1;
+  ST_NITI = get_nprocs();
 
   /* izpiši prost pomnilnik in št.niti */
-  printf("V pomnilniku je prostora za %ld praštevil (%f GB).\n",
-          pomnilnik, (float) pomnilnik * sizeof(unsigned int) / 1000000000);
+  printf("V pomnilniku je prostora za %ld praštevil (%s).\n",
+          pomnilnik, vrniVelikost(pomnilnik * sizeof(unsigned int)));
 
   /* slovnica 😃 */
   char je_sta_so[4]; if (ST_NITI == 2) strcpy(je_sta_so, "sta");
   else if (ST_NITI == 3 || ST_NITI == 4) strcpy(je_sta_so, "so"); else strcpy(je_sta_so, "je");
-  printf("Na voljo %s %hu niti za računanje in 1 za izpisovanje napredka.\n", je_sta_so, ST_NITI);
+  printf("Na voljo %s %hu niti za računanje.\n", je_sta_so, ST_NITI);
 
   /* dodeli vse razen 10 % Eratostenovenu rešetu */
   eratosten = (unsigned int*) malloc(pomnilnik * sizeof(unsigned int));
@@ -138,7 +152,7 @@ int main() {
     fclose(f);
     printf("Datoteka prebrana.   "); fflush(stdout);
     stPrastevil -= 1; // Brez EOF (0)
-    stZapisanih = stPrastevil + 2;
+    stZapisanih = stPrastevil;
   }
   else {
     eratosten[0] = 2;
@@ -154,24 +168,22 @@ int main() {
   printf("\rUstvarjam niti ...\r"); fflush(stdout);
 
   /* inicializiraj in zaženi nit za izpisovanje */
-  time_z = time(NULL);
   pthread_t izpisovalnik;
   pthread_create(&izpisovalnik, NULL, izpisi, NULL);
 
   /* inicializiraj in zaženi niti za računanje */
+  stIzracunanih = ST_NITI;
   pthread_t racunanje[ST_NITI];
   unsigned short idNiti[ST_NITI];
   for (int n = 0; n < ST_NITI; n++) idNiti[n] = n;
   for (int n = 0; n < ST_NITI; n++) pthread_create(&racunanje[n], NULL, racunaj, &idNiti[n]);
 
   /* začni računati praštevila */
-  i = eratosten[stPrastevil - 1] + 1;
-  while (stPrastevil <= 20 && !izhod) {
-    stDeliteljev = 0;
+  kandidat = eratosten[stPrastevil - 1] + 1;
+  time_z = time(NULL);
+  while (stPrastevil < pomnilnik && !izhod) {
+    stDeliteljev = 0; stIzracunanih = 0;
     /* daj signal za računanje */
-    lock(&izracunano_lock);
-    stIzracunanih = 0;
-    unlock(&izracunano_lock);
     cond_broadcast(&izracunaj);
     /* počakaj, da se izračuna */
     lock(&izracunano_lock);
@@ -179,27 +191,28 @@ int main() {
     unlock(&izracunano_lock);
     /* preveri št. deliteljev */
     if (stDeliteljev == 0) {
-      eratosten[stPrastevil] = i;
+      eratosten[stPrastevil] = kandidat;
       stPrastevil++;
-      printf("%u je praštevilo. %u\n", i, stDeliteljev); // debugging
+      // printf("%u je praštevilo. %u\n", kandidat, stDeliteljev); // debugging
     }
-    else printf("%u ni praštevilo. %u\n", i, stDeliteljev); // debugging
+    // else printf("%u ni praštevilo. %u\n", kandidat, stDeliteljev); // debugging
     /* naslednje število */
-    lock(&i_lock);
-    i++;
-    unlock(&i_lock);
+    lock(&kandidat_lock);
+    kandidat++;
+    unlock(&kandidat_lock);
   }
 
   /* ob končanem izvajanju */
+  unsigned int time_k = time(NULL);
   izhod = true; pthread_cancel(izpisovalnik); for (int n = 0; n < ST_NITI; n++) pthread_cancel(racunanje[n]);
   printf("\rPraštevil do %d je %d         \nZapisovanje ...\r", eratosten[stPrastevil - 1], stPrastevil);
   fflush(stdout);
   /* zapiši na novo izračuana praštevila */
   f = fopen("Prastevila-izpis.txt", "a");
-  for (int i = stZapisanih; i < stPrastevil; i++) fprintf(f, "%d, ", eratosten[i]);
+  for (int kandidat = stZapisanih; kandidat < stPrastevil; kandidat++) fprintf(f, "%d, ", eratosten[kandidat]);
   free(eratosten); fclose(f); // sprosti pomnilnik, zapri datoteko
   /* izračunaj porabljen čas v H, M, S */
-  int s = time(NULL) - time_z;
+  int s = time_k - time_z;
   int h = s / 3600;
   s %= 3600;
   int m = s / 60;
