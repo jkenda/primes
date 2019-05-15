@@ -111,7 +111,7 @@ int main(int argc, char* args[]) {
   fflush(stdout);
   /* zapiši na novo izračuana praštevila */
   f = fopen("Prastevila-izpis.txt", "a");
-  for (int i = stZapisanih; i < stPrastevil; i++) fprintf(f, "%d, ", eratosten[i]);
+  for (int i = stZapisanih; i < stPrastevil; i++) fprintf(f, "%d,", eratosten[i]);
   free(eratosten); fclose(f); // sprosti pomnilnik, zapri datoteko
   /* izračunaj porabljen čas v H, M, S */
   int s = time_k - time_z;
