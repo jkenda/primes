@@ -1,8 +1,18 @@
+/* Copyright (C) 2019 Jakob Kenda */
 
 unsigned long vrniPomnilnik() {
-  long pages = sysconf(_SC_PHYS_PAGES);
-  long page_size = sysconf(_SC_PAGE_SIZE);
-  return pages * page_size;
+  long total_memory;
+  #ifdef _WIN32
+    MEMORYSTATUSEX status;
+    status.dwLength = sizeof(status);
+    GlobalMemoryStatusEx(&status);
+    total_memory = status.ullTotalPhys;
+  #else
+    long pages = sysconf(_SC_PHYS_PAGES);
+    long page_size = sysconf(_SC_PAGE_SIZE);
+    total_memory = pages * page_size;
+  #endif
+    return total_memory;
 }
 
 char* vrniVelikost(long bytes) {
@@ -23,9 +33,14 @@ char* vrniVelikost(long bytes) {
 
 char* je_sta_so(unsigned char stevilo) {
   static char beseda[4];
-  if (stevilo == 2) sprintf(beseda, "sta");
-  else if (stevilo == 3 || stevilo == 4) sprintf(beseda, "so");
-  else sprintf(beseda, "je");
+  #if LANGUAGE == sl
+    if (stevilo == 2) sprintf(beseda, "sta");
+    else if (stevilo == 3 || stevilo == 4) sprintf(beseda, "so");
+    else sprintf(beseda, "je");
+  #else
+    if (stevilo == 1) sprintf(beseda, "is");
+    else sprintf(beseda, "are");
+  #endif
   return beseda;
 }
 

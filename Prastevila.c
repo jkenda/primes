@@ -1,209 +1,194 @@
 /* Copyright (C) 2019 Jakob Kenda */
 
 #include <stdio.h>       // I/0 (branje in izpisovanje na zaslon / v datoteko)
-#include <stdlib.h>      // malloc (dodeljevanje pomnilnika)
+#include <stdlib.h>      // malloc (dodeljevanje stPrastevilMaxa)
 #include <time.h>        // merjenje časa
-#include <pthread.h>     // multithreading
-#include <unistd.h>      // spanje in pridobivanje velikosti preostalega pomnilnika
-#include <signal.h>      // zaznavanje signalov (Ctrl+C, napake)
-#include <sys/sysinfo.h> // število niti
+#include <pthread.h>     // nit za izpisovanje napredka
+#include <omp.h>         // multithreading
+#ifdef _WIN32
+  #include <windows.h>   // proklet windows rab svojo knjižnico za stPrastevilMax
+#endif
+#include <unistd.h>      // spanje in pridobivanje velikosti preostalega stPrastevilMaxa na ne-windowsu
+#include <signal.h>      // zaznavbanje signalov (Ctrl+C, napake)
 #include <stdbool.h>     // knjižnica za boolean
 #include <string.h>      // knjižnica za string
-#include "funkcije.h"    // moje funkcije
 
-#define lock           pthread_mutex_lock
-#define unlock         pthread_mutex_unlock
-#define cond_signal    pthread_cond_signal
-#define cond_broadcast pthread_cond_broadcast
-#define cond_wait      pthread_cond_wait
+#include "lib/funkcije.h"    // moje funkcije
+#include "lib/strings.h"     // prevodi
 
-/*
-typedef struct mt {
-  bool je_izracunana;
-  unsigned char id_niti;
-  unsigned char delitelji;
-} podatkiNiti;
-*/
+#define _FILENAME_PRIMES "results/primes.js"
+#define _FILENAME_SPEED  "results/speed.js"
+
+#define lock   pthread_mutex_lock
+#define unlock pthread_mutex_unlock
+#define jeDeljiv(deljenec, delitelj) ((deljenec) % (delitelj) == 0)
+
+pthread_mutex_t stPrastevilLock = PTHREAD_MUTEX_INITIALIZER;
 
 bool izhod = false;
 bool imaDelitelje;
-unsigned char ST_NITI, maska, izracunaneNiti;
-unsigned  int kandidat, *eratosten, stPrastevil, napaka;
-unsigned long pomnilnik, time_z;
-
-pthread_mutex_t kandidat_lock, stDeliteljevLock, izracunaneNitiLock = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t izracunaj, izracunano = PTHREAD_COND_INITIALIZER;
+unsigned  int kandidat, *eratosten, stPrastevil;
+unsigned long stPrastevilMax, time_z;
 
 void sigFPE() {
-  fprintf(stderr, "\nNAPAKA! Prišlo je do preliva (ali deljenja z 0).\n");
-  izhod = true; imaDelitelje = 1;
-  izracunaneNiti = maska; cond_signal(&izracunano);
+  fprintf(stderr, STRING_ERR_FPE);
+  izhod = true;
 }
 
 void sigILL() {
-  fprintf(stderr, "\nNAPAKA! Koda je pokvarjena ali pa program poskuša izvesti podatke.\n");
-  izhod = true; imaDelitelje = 1;
-  izracunaneNiti = maska; cond_signal(&izracunano);
+  fprintf(stderr, STRING_ERR_ILL);
+  izhod = true;
 }
 
 void sigSEGV() {
-  fprintf(stderr, "\nNAPAKA! Program je hotel brati izven svojega pomnilnika (segmentation fault).\n");
-  izhod = true; imaDelitelje = 1;
-  izracunaneNiti = maska; cond_signal(&izracunano);
+  fprintf(stderr, STRING_ERR_SEGV);
+  izhod = true;
 }
 
 void ctrlC() {
-  izhod = true; imaDelitelje = 1;
-  izracunaneNiti = maska; cond_signal(&izracunano);
+  izhod = true; imaDelitelje = true;
 }
 
 /* nit za izpisovanje */
 void* izpisi(void* param) {
-  int lokalni_kandidat;
+  int stPrastevilLocal = 0, stPrastevilLocalOld = 0, speed = 0, cas;
+  FILE *s; s = fopen(_FILENAME_SPEED, "w"); fprintf(s, "speed = [");
   while (!izhod) {
-    lock(&kandidat_lock); lokalni_kandidat = kandidat; unlock(&kandidat_lock);
-    printf("\r%d (%d / 1000), %s ", kandidat, (int) (lokalni_kandidat * 1000 / pomnilnik),
-          d_h_m_s(time(NULL) - time_z));
-    fflush(stdout);
+    stPrastevilLocalOld = stPrastevilLocal;
+    lock(&stPrastevilLock); stPrastevilLocal = stPrastevil; unlock(&stPrastevilLock);
+    speed = stPrastevilLocal - stPrastevilLocalOld; cas = time(NULL) - time_z;
+    printf("\r%u (%d / 1000), %s [%d/s]   ", stPrastevilLocal, (int) (stPrastevilLocal * 1000 / stPrastevilMax),
+          d_h_m_s(cas), speed); fflush(stdout);
+    fprintf(s, "{x:%d,y:%d},", cas, speed);
     sleep(1);
   }
-  return NULL;
-}
-
-void* racunaj(void* nitPtr) {
-  unsigned char nit = *((unsigned char*) nitPtr);
-
-  while (stPrastevil < pomnilnik && !izhod) {
-    lock(&izracunaneNitiLock);
-    while((izracunaneNiti >> nit) & 1U) cond_wait(&izracunaj, &izracunaneNitiLock);
-    unlock(&izracunaneNitiLock);
-    for (int i = nit; i < stPrastevil; i += ST_NITI) {
-      if (kandidat % eratosten[i] == 0) imaDelitelje = true;
-      lock(&stDeliteljevLock);
-      if (imaDelitelje) {
-        unlock(&stDeliteljevLock);
-        break;
-      }
-      unlock(&stDeliteljevLock);
-    }
-    lock(&izracunaneNitiLock);
-    izracunaneNiti |= 1U << nit;   // nastavi bit niti na 1
-    if (izracunaneNiti == maska) { // končajo vse niti
-      unlock(&izracunaneNitiLock);
-      cond_signal(&izracunano);
-    }
-  }
+  cas = time(NULL) - time_z;
+  fprintf(s, "{x:%d,y:%d},", cas, speed);
+  if (speed != 0) fseek(s, -1, SEEK_CUR);
+  fprintf(s, "]"); fclose(s);
   return NULL;
 }
 
 int main(int argc, char **args) {
   /* ctrl + C, terminate */
-  signal(SIGINT, ctrlC); //signal(SIGTERM, ctrlC);
+  signal(SIGINT, ctrlC); signal(SIGTERM, ctrlC);
   /* handlanje napak */
-  // signal(SIGFPE, sigFPE); signal(SIGILL, sigILL); signal(SIGSEGV, sigSEGV);
+  signal(SIGFPE, sigFPE); signal(SIGILL, sigILL); signal(SIGSEGV, sigSEGV);
 
-  if (argc > 1) pomnilnik = strtol(args[1], NULL, 10);
+  if (argc > 1) stPrastevilMax = strtol(args[1], NULL, 10);
   else {
-    /* preveri, koliko pomnilnika je na voljo */
-    printf("Štejem, koliko pomnilnika je na voljo ...\r"); fflush(stdout);
-    pomnilnik = vrniPomnilnik() / sizeof(unsigned int);
-    pomnilnik -= pomnilnik / 10; // pusti 10 %
+    /* preveri, koliko stPrastevilMaxa je na voljo */
+    printf(STRING_MEMORY_COUNTING); fflush(stdout);
+    stPrastevilMax = vrniPomnilnik();
+    stPrastevilMax -= stPrastevilMax / 10; // pusti 10 %
   }
 
   /* preveri, koliko niti je na voljo */
-  ST_NITI = get_nprocs();
-  /* nastavitev maske za sinhronizacijo niti */
-  for (int i = 0; i < ST_NITI; i++) maska |= 1 << i; // nastavi i-ti bit maske na 1
+  int ST_NITI;
+  #pragma omp parallel
+  ST_NITI = omp_get_max_threads();
 
-  /* izpiši prost pomnilnik in št.niti */
-  printf("V pomnilniku je prostor za %ld praštevil (%s).\n",
-          pomnilnik, vrniVelikost(pomnilnik * sizeof(unsigned int)));
+  /* izpiši prost stPrastevilMax in št.niti */
+  printf(STRING_MEMORY_REMAINING,
+          stPrastevilMax, vrniVelikost(stPrastevilMax * sizeof(unsigned int)));
 
   /* slovnica 😃 */
-  printf("Na voljo %s %hu niti za računanje.\n", je_sta_so(ST_NITI), ST_NITI);
+  printf(STRING_THREADS_AVAILABLE, je_sta_so(ST_NITI), ST_NITI);
 
   /* dodeli vse razen 10 % Eratostenovenu rešetu */
-  eratosten = (unsigned int*) malloc(pomnilnik * sizeof(unsigned int));
+  eratosten = (unsigned int*) malloc(stPrastevilMax * sizeof(unsigned int));
 
   /* preberi že izračunana praštevila iz datoteke */
   unsigned int stZapisanih; char odgovor;
 
+  int napaka = 0;
+  unsigned long skupniCas = 0;
   FILE *f;
-  printf("Odpiram datoteko s praštevili ... "); fflush(stdout);
-  f = fopen("Prastevila-izpis.csv", "r");
-  if (f != NULL) { // če datoteka obstaja in je dostopna
-    printf("Berem datoteko ...   \r"); fflush(stdout);
+  printf(STRING_FILE_OPENING); fflush(stdout);
+  f = fopen(_FILENAME_PRIMES, "r");
+  if (f != NULL && strcmp(args[2], "--override")) { // če datoteka obstaja in je dostopna ter ni argumenta -override
+    printf(STRING_FILE_READING); fflush(stdout);
     stPrastevil = 0;
+    fseek(f, strlen("primes = ["), SEEK_CUR); // preskoči "primes = ["
+    printf("%c\n", getchar());
     while (napaka != EOF) {
-      // if (izhod) exit(0);
-      napaka = fscanf(f, "%u, ", &eratosten[stPrastevil]);
+      napaka = fscanf(f, "%u,", &eratosten[stPrastevil]);
       stPrastevil++;
     }
     fclose(f);
-    printf("Datoteka prebrana.   "); fflush(stdout);
-    stPrastevil -= 1; // Brez EOF (0)
+    printf(STRING_FILE_READ); fflush(stdout);
+    stPrastevil -= 2; // Brez EOF in ']'
     stZapisanih = stPrastevil;
-    printf("\b\bŠt. praštevil: %d (do %u)\n", stPrastevil, eratosten[stPrastevil - 1]);
-    printf("Ali želite nadaljevati? [Y/n] ");
-    odgovor = getchar();
-    if (odgovor == 'n' || odgovor == 'N') exit(0);
+    printf(STRING_PRIME_NUMBER_OF, stPrastevil, eratosten[stPrastevil - 1]);
+    f = fopen("results/.time", "r");
+    if (f != NULL) napaka = fscanf(f, "%lu", &skupniCas);
+    printf(STRING_TIME_PREVIOUS, d_h_m_s(skupniCas));
+    if (strcmp(args[2], "-override")) {
+      printf(STRING_CONTINUE);
+      odgovor = getchar();
+      if (odgovor == 'n' || odgovor == 'N') exit(0);
+    }
   }
   else {
-    printf("\b\b\b\b\b. Datoteke ne morem odpreti. Ustvarim novo? [Y/n] ");
-    odgovor = getchar(); if (odgovor == 'n' || odgovor == 'N') exit(0);
+    fclose(f);
+    if (strcmp(args[2], "--override")) {
+      printf(STRING_FILE_CANNOT_OPEN);
+      odgovor = getchar(); if (odgovor == 'n' || odgovor == 'N') exit(0);
+    }
     eratosten[0] = 2;
     stPrastevil = 1;
     stZapisanih = 0;
   }
 
-  printf("Ustvarjam niti ...\r"); fflush(stdout);
+  printf(STRING_THREADS_CREATING); fflush(stdout);
 
   /* inicializiraj in zaženi nit za izpisovanje */
-  time_z = time(NULL);
+  time_z = time(NULL) - skupniCas;
   pthread_t izpisovalnik;
   pthread_create(&izpisovalnik, NULL, izpisi, NULL);
 
-  /* inicializiraj in zaženi niti za računanje */
-  izracunaneNiti = maska;
-  pthread_t racunanje[ST_NITI];
-  short idNiti[ST_NITI];
-  for (short i = 0; i < ST_NITI; i++) idNiti[i] = i;
-  for (short i = 0; i < ST_NITI; i++) pthread_create(&racunanje[i], NULL, racunaj, &idNiti[i]);
-
-  /* začni računati praštevila */
-  kandidat = eratosten[stPrastevil - 1] + 1;
-  time_z = time(NULL);
-  while (stPrastevil < pomnilnik && !izhod) {
-    imaDelitelje = false; izracunaneNiti = 0;
-    /* daj signal za računanje */
-    cond_broadcast(&izracunaj);
-    /* počakaj, da se izračuna */
-    lock(&izracunaneNitiLock);
-    while(izracunaneNiti != maska) cond_wait(&izracunano, &izracunaneNitiLock);
-    unlock(&izracunaneNitiLock);
-    /* preveri št. deliteljev */
+  /* računaj praštevila */
+  kandidat = eratosten[stPrastevil - 1] % 2 == 0
+             ? eratosten[stPrastevil - 1] + 1  // če je sodo
+             : eratosten[stPrastevil - 1] + 2; // če je liho
+  time_z = time(NULL) - skupniCas;
+  while (stPrastevil < stPrastevilMax && !izhod) {
+    imaDelitelje = false;
+    // #pragma omp simd
+    for (int i = 0; i < stPrastevil && !imaDelitelje; i++)
+      if (jeDeljiv(kandidat,eratosten[i])) imaDelitelje = true;
+    /* preveri, ali ima delitelje */
     if (!imaDelitelje) {
       eratosten[stPrastevil] = kandidat;
+      lock(&stPrastevilLock);
       stPrastevil++;
-      // printf("%u je praštevilo. %u\n", kandidat, imaDelitelje); // debugging
+      unlock(&stPrastevilLock);
     }
-    // else printf("%u ni praštevilo. %u\n", kandidat, imaDelitelje); // debugging
-
-    lock(&kandidat_lock);
-    kandidat++;
-    unlock(&kandidat_lock);
     /* preveri naslednjega kandidata */
+    kandidat += 2;
   }
 
   /* ob končanem izvajanju */
   unsigned long time_k = time(NULL);
-  izhod = true; pthread_cancel(izpisovalnik); for (int i = 0; i < ST_NITI; i++) pthread_cancel(racunanje[i]);
-  printf("\rPraštevil do %d je %d         \nZapisovanje ...\r", eratosten[stPrastevil - 1], stPrastevil);
+  izhod = true; pthread_join(izpisovalnik, NULL);
+  printf(STRING_WRITING, eratosten[stPrastevil - 1], stPrastevil);
   fflush(stdout);
   /* zapiši na novo izračuana praštevila kot comma-separated values (CSV) */
-  f = fopen("Prastevila-izpis.csv", "a");
-  for (int i = stZapisanih; i < stPrastevil; i++) fprintf(f, "%d,", eratosten[i]);
-  free(eratosten); fclose(f); // sprosti pomnilnik, zapri datoteko
-  printf("Končano. Čas: %s\n", d_h_m_s(time_k - time_z));
+  f = fopen(_FILENAME_PRIMES, "w");
+  if (stZapisanih == 0) {
+    fseek(f, 0, SEEK_END); fprintf(f, "primes = [");
+  }
+  else {
+    fseek(f, -1, SEEK_END); fprintf(f, ",");
+  }
+  for (int i = stZapisanih; i < stPrastevil; i++) {
+    fprintf(f, "%d,", eratosten[i]);
+  }
+  /* sprosti stPrastevilMax, zaključi in zapri datoteko */
+  free(eratosten); fseek(f, -1, SEEK_END); fprintf(f, "]"); fclose(f);
+  /* zapiši skupni porabljen čas v datoteko */
+  f = fopen("results/.time", "a");
+  if(time_k - time_z > 0) fprintf(f, "\r%lu", time_k - time_z);
+  printf(STRING_FINISHED, d_h_m_s(time_k - time_z));
   return 0;
 }
