@@ -1,5 +1,8 @@
-Prastevila-izpis.txt
-Prastevila.s
-Prastevila
-Prastevila-ARM*
+bin/*
+assembly/*
+results/*
 cuda-samples
+infer*
+
+!results/index.html
+!results/TEST
