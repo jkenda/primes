@@ -1,8 +1,8 @@
-bin/*
-assembly/*
-results/*
-cuda-samples
-infer*
-
+*
+# ignore all except the following:
+!.gitignore
+!Prastevila.c
+!Makefile
+!lib/*
 !results/index.html
 !results/TEST
