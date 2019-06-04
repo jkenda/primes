@@ -1,5 +1,29 @@
 /* Copyright (C) 2019 Jakob Kenda */
 
+#include <sys/time.h>
+
+#define _FILENAME_TEMP   "/sys/bus/platform/devices/coretemp.0/hwmon/hwmon1/temp1_input"
+#define _FILENAME_USAGE  "/proc/stat"
+
+void debug(int NUM_THREADS, unsigned int *prime_on_thread_counter, unsigned int **primes_on_thread)
+{
+  putchar('\n');
+  int counter_max = 0;
+  for (int i = 0; i < NUM_THREADS; i++) {
+    printf("%4u ", prime_on_thread_counter[i]); 
+    if (prime_on_thread_counter[i] > counter_max) counter_max = prime_on_thread_counter[i];
+  }
+  putchar('\n'); 
+  for (int i = 0; i < counter_max; i++) {
+    for (int j = 0; j < NUM_THREADS; j++) {
+      if (prime_on_thread_counter[j] > i) printf("%3u ", primes_on_thread[j][i]);
+      else printf("     ");
+    }
+    putchar('\n'); 
+  }
+  printf("----------"); putchar('\n');
+}
+
 unsigned long get_avail_mem() 
 {
   long total_memory;
@@ -59,4 +83,52 @@ char* d_h_m_s(int s)
   else if (m > 0) sprintf(cas, "%dm %ds", m, s);
   else            sprintf(cas, "%ds", s);
   return cas;
+}
+
+bool strmatch(char* str1, char* str2) 
+{
+  return !strcmp(str1, str2);
+}
+
+int get_cpu_temperature() 
+{
+  static int temp;
+  FILE* tempInput = fopen(_FILENAME_TEMP, "r");  
+  fscanf(tempInput, "%d", &temp); 
+  fclose(tempInput);
+  return temp / 1000;
+}
+
+unsigned int get_cpu_usage() 
+{
+  static unsigned int idle_current, idle_last, total_current, total_last, total_counting;
+  static int usage;
+  FILE *usageInput = fopen(_FILENAME_USAGE, "r"); 
+  fseek(usageInput, 4, SEEK_CUR); 
+  fscanf(usageInput, "%u", &idle_current);
+  total_current = 0;
+  for (int i = 2; i <= 10; i++) {
+    fscanf(usageInput, "%u", &total_counting);
+    total_current += total_counting; 
+  }
+  fclose(usageInput);
+  usage = (unsigned int) (1.0 - (float) (idle_current - idle_last) / (total_current - total_last)) * 100;
+  idle_last = idle_current;
+  total_last = total_current;
+  return usage;
+}
+
+struct timespec time_nanoseconds()
+{
+  struct timespec tv;
+  clock_gettime(CLOCK_REALTIME, &tv);
+  return tv;
+}
+
+struct timespec* subtract_nanoseconds(struct timespec first, struct timespec second)
+{
+  static struct timespec subtracted;
+  subtracted.tv_sec = first.tv_sec - second.tv_sec;
+  subtracted.tv_nsec = first.tv_nsec - second.tv_nsec;
+  return &subtracted;
 }

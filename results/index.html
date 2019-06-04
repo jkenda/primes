@@ -69,11 +69,12 @@
       function naloziDel() {
         var prastevilaElement = "";
         for (var i = stNalozenih; i < (stNalozenih + NALOZI_NAENKRAT - 1 <= primes.length ? stNalozenih + NALOZI_NAENKRAT : primes.length); i++) {
-          prastevilaElement += primes[i] + (i != (primes.length) ? ", " : ".");
+          prastevilaElement += primes[i] + (i != (primes.length - 1) ? ", " : ".");
         }
         stNalozenih += i;
 
         $("#primes").append(prastevilaElement);
+        if (stNalozenih == primes.length) $("#load-more").hide();
       }
 
       function prilagodiGraf() {
@@ -105,7 +106,7 @@
           data: {
             datasets: [{
               showLine: true,
-              pointRadius: 0,
+              //pointRadius: 0,
               label: "Calculation speed [time]",
               borderColor: 'red',
               data: speed

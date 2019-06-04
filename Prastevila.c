@@ -5,6 +5,7 @@
 #include <stdio.h>       // I/0 (reading and writing on screen / to file)
 #include <stdlib.h>      // malloc (allocating memory)
 #include <time.h>        // measuring time consumption
+#include <math.h>        // log2()
 #include <pthread.h>     // thread for info screen
 #include <omp.h>         // multithreading
 #ifdef _WIN32
@@ -20,15 +21,13 @@
 
 #define _FILENAME_PRIMES "results/primes.js"
 #define _FILENAME_SPEED  "results/speed.js"
-#define _FILENAME_TEMP   "/sys/bus/platform/devices/coretemp.0/hwmon/hwmon1/temp1_input"
-#define _FILENAME_USAGE  "/proc/stat"
 
-#define strmatch(str1, str2) (!strcmp(str1, str2))
 typedef unsigned int prime_type;
 typedef unsigned char byte;
 
-bool finish = false, finished = false;
-prime_type candidate, *primes, prime_counter, max_primes = 0;
+bool finish = false;
+prime_type candidate, *primes, **primes_on_thread;
+unsigned int prime_counter, *prime_on_thread_counter, max_primes = 0;
 unsigned long time_z;
 
 void sigFPE() 
@@ -37,17 +36,20 @@ void sigFPE()
   finish = true;
 }
 
-void sigILL() {
+void sigILL() 
+{
   fprintf(stderr, _STRING_ERR_ILL);
   finish = true;
 }
 
-void sigSEGV() {
+void sigSEGV() 
+{
   fprintf(stderr, _STRING_ERR_SEGV);
   finish = true;
 }
 
-void ctrlC() {
+void ctrlC() 
+{
   finish = true;
 }
 
@@ -55,35 +57,35 @@ void ctrlC() {
 void* izpisi(void* param) 
 { 
   /* file pointers */
-  FILE *tempInput, *speedOutput, *usageInput;
+  FILE *speedOutput;
 
-  int prime_counter_local, prime_counter_local_old, speed, time_curr, temp, usage_curr, usage_last;
-  prime_counter_local = 0; prime_counter_local_old = 2; speed = 0; usage_last = 0;
+  struct timespec loop_start;
+  int prime_counter_local, prime_counter_local_old, speed, time_curr;
+  prime_counter_local = 0; prime_counter_local_old = 2; speed = 0;
   speedOutput = fopen(_FILENAME_SPEED, "w"); fprintf(speedOutput, "speed = [");
-  while (!finished) {
-    prime_counter_local_old = prime_counter_local;
+  while (!finish) {
+    loop_start = time_nanoseconds(); loop_start.tv_sec -= 1;
+    if (prime_counter_local_old != prime_counter_local) prime_counter_local_old = prime_counter_local;
     prime_counter_local = prime_counter; 
-    speed     = prime_counter_local - prime_counter_local_old; 
+    if (prime_counter_local_old != prime_counter_local) speed = prime_counter_local - prime_counter_local_old; 
     time_curr = time(NULL) - time_z;
-    tempInput  = fopen(_FILENAME_TEMP, "r");  fscanf(tempInput, "%d", &temp); fclose(tempInput);
-    usageInput = fopen(_FILENAME_USAGE, "r"); fseek(usageInput, 4, SEEK_CUR); fscanf(usageInput, "%d", &usage_curr); fclose(usageInput);
 
-    printf("\r%u (%u / 1000), %s [%d/s], CPU: %d °C, %d %% ", 
+    printf("\r%u (%u / 1000), %s [%d/s], CPU: %d °C, %u %% ", 
       prime_counter_local, (int) (prime_counter_local * 1000 / max_primes), 
-      d_h_m_s(time_curr), speed, temp / 1000, (usage_curr - usage_last) / 10); 
+      d_h_m_s(time_curr), speed, get_cpu_temperature(), get_cpu_usage()); 
     fflush(stdout);
-    fprintf(speedOutput, "{x:%d,y:%d},", time_curr, speed);
-    usage_last = usage_curr;
-    sleep(1);
+    if (prime_counter_local_old != prime_counter_local) fprintf(speedOutput, "{x:%d,y:%d},", time_curr, speed);
+    nanosleep(subtract_nanoseconds(time_nanoseconds(), loop_start), NULL);
   }
   time_curr = time(NULL) - time_z;
   fprintf(speedOutput, "{x:%d,y:%d},", time_curr, speed);
-  if (speed != 0) fseek(speedOutput, -1, SEEK_CUR);
+  if (prime_counter_local != 0) fseek(speedOutput, -1, SEEK_CUR);
   fprintf(speedOutput, "]"); fclose(speedOutput);
   return NULL;
 }
 
-bool is_prime(prime_type candidate) {
+bool is_prime(prime_type candidate) 
+{
   bool has_denominators = false;
   for (int i = 0; i < prime_counter && !has_denominators; i++) {
     if (candidate % primes[i] == 0) has_denominators = true;
@@ -91,18 +93,34 @@ bool is_prime(prime_type candidate) {
   return !has_denominators;
 }
 
-prime_type get_primes(prime_type start, prime_type end) {
-  #pragma omp parallel for ordered schedule(simd:runtime) shared(prime_counter)
+prime_type get_primes(prime_type start, prime_type end) 
+{
+  #pragma omp for ordered schedule(simd:static)
   for (candidate = start; candidate <= end; candidate += 2) {
+    int local_prime_counter;
+    #pragma omp atomic read
+    local_prime_counter = prime_counter;
+    if (local_prime_counter >= max_primes || finish) continue;
     if (is_prime(candidate)) {
-      #pragma omp ordered
-      {
-        primes[prime_counter] = candidate;
-        prime_counter++;
-      }
+      primes_on_thread[omp_get_thread_num()][prime_on_thread_counter[omp_get_thread_num()]] = candidate;
+      prime_on_thread_counter[omp_get_thread_num()]++;
     }
   }
   return end;
+}
+
+void insert_primes_from_threads(int NUM_THREADS) 
+{
+  #pragma omp for ordered schedule(simd:static)
+  for (int i = 0; i < NUM_THREADS; i++) {
+    #pragma omp ordered
+    for (int j = 0; j < prime_on_thread_counter[i]; j++) {
+      primes[prime_counter + j] = primes_on_thread[i][j];
+    }
+    #pragma omp atomic update
+    prime_counter += prime_on_thread_counter[i];
+    prime_on_thread_counter[i] = 0;
+  }
 }
 
 int main(int argc, char **args) 
@@ -115,14 +133,16 @@ int main(int argc, char **args)
   bool override = false;
   for (int i = 1; i < argc; i++) {
     if (strmatch(args[i], "--override")) override = true;
-    if (args[i][0] != '-') max_primes = strtol(args[i], NULL, 10);
+    if (args[i][0] != '-') max_primes = strtol(args[i], NULL, 10); // (-1)
   }
-  if (max_primes == 0) {
+  if (!max_primes) {
     /* preveri, koliko pomnilnika je na voljo */
     printf(_STRING_MEMORY_COUNTING); fflush(stdout);
     max_primes = get_avail_mem();
-    max_primes -= max_primes / 10;
+    max_primes = max_primes * 0.66 - max_primes / 10;
   }
+
+  unsigned int max_memory = get_avail_mem();
 
   /* get available threads */
   int NUM_THREADS;
@@ -136,7 +156,13 @@ int main(int argc, char **args)
   printf(_STRING_THREADS_AVAILABLE, grammar(NUM_THREADS), NUM_THREADS);
 
   /* allocate available memory for primes */
-  primes = malloc(max_primes * sizeof(prime_type));
+  primes = malloc(max_memory * sizeof(prime_type));
+  primes_on_thread = malloc(NUM_THREADS * sizeof(prime_type*));
+  prime_on_thread_counter = malloc(NUM_THREADS * sizeof(unsigned int*));
+  for (int i = 0; i < NUM_THREADS; i++) {
+    primes_on_thread[i] = malloc(max_memory / 2 / NUM_THREADS * sizeof(prime_type));
+    prime_on_thread_counter[i] = 0;
+  }
 
   unsigned int written_counter; char answer;
 
@@ -144,8 +170,10 @@ int main(int argc, char **args)
   int error = 0;
   unsigned long time_combined = 0;
   FILE *f;
-  printf(_STRING_FILE_OPENING); fflush(stdout);
-  f = fopen(_FILENAME_PRIMES, "r");
+  if (!override) {
+    printf(_STRING_FILE_OPENING); fflush(stdout);
+    f = fopen(_FILENAME_PRIMES, "r");
+  }
   if (f != NULL && !override) { // if file exists and is available, not --override
     printf(_STRING_FILE_READING); fflush(stdout);
     prime_counter = 0;
@@ -167,8 +195,8 @@ int main(int argc, char **args)
     if (answer == 'n' || answer == 'N') exit(0);
   }
   else {
-    fclose(f);
     if (!override) {
+      fclose(f);
       printf(_STRING_FILE_CANNOT_OPEN);
       answer = getchar(); if (answer == 'n' || answer == 'N') exit(0);
     }
@@ -183,20 +211,29 @@ int main(int argc, char **args)
   /* initialize and start info thread */
   time_z = time(NULL) - time_combined;
   pthread_t status_screen;
-  pthread_create(&status_screen, NULL, izpisi, NULL);
+  pthread_create(&status_screen, NULL, izpisi, &NUM_THREADS);
 
   /* HEART OF THE PROGRAM */
   /* calculate primes */
   prime_type start = primes[prime_counter - 1] + 2;
   prime_type end   = start + primes[prime_counter - 1] - 1;
+
+  #pragma omp parallel shared(prime_counter)
   while (prime_counter < max_primes && !finish) {
     start = get_primes(start, end) + 2;
     end = start + primes[prime_counter - 1] - 1;
+
+    #if DEBUG
+    debug(NUM_THREADS, &prime_on_thread_counter[0], &primes_on_thread[0]);
+    #endif
+
+    insert_primes_from_threads(NUM_THREADS);
   }
 
   /* when calculation ends */
   unsigned long time_k = time(NULL);
-  finished = true; pthread_join(status_screen, NULL);
+  finish = true; pthread_join(status_screen, NULL);
+  if (prime_counter > max_primes) prime_counter = max_primes;
   printf(_STRING_WRITING, primes[prime_counter - 1], prime_counter);
   fflush(stdout);
   /* write newly calculated primes as a javascript file to be opened by results/index.html */
@@ -207,14 +244,25 @@ int main(int argc, char **args)
   else {
     fseek(f, -2, SEEK_END); fprintf(f, ",");
   }
+
+  /* write ending and close file */
   for (int i = written_counter; i < prime_counter; i++) {
     fprintf(f, "%d,", primes[i]);
   }
-  /* free max_primes, write ending and close file */
-  free(primes); fseek(f, -1, SEEK_END); fprintf(f, " ]"); fclose(f);
+  fseek(f, -1, SEEK_END); fprintf(f, " ]"); fclose(f);
+
+
+  /* free primes, primes_on_thread and primes_on_thread_counter */
+  free(primes); 
+  for (int i = 0; i < NUM_THREADS; i++) {
+    free(primes_on_thread[i]);
+  }
+  free(primes_on_thread);
+  free(prime_on_thread_counter);
+
   /* write time to file */
   f = fopen("results/.time", "w");
-  if(time_k - time_z > 0) fprintf(f, "\r%lu", time_k - time_z);
+  if(time_k - time_z > 0) fprintf(f, "%lu", time_k - time_z); 
   fclose(f);
   printf(_STRING_FINISHED, d_h_m_s(time_k - time_z));
   return 0;
