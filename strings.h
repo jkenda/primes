@@ -6,7 +6,7 @@
 	#define _STRING_ERR_SEGV "\n🙁 Program je poskusil dostopati do podatkov, ki niso njegovi.\n"
 
 	#define _STRING_MEMORY_COUNTING   "Štejem, koliko spomina je na voljo."
-	#define _STRING_MEMORY_REMAINING  "\rV pomnilniku je prostor za %u praštevil (%s).\n"
+	#define _STRING_MEMORY_AVAILABLE  "\rV pomnilniku je prostor za %u praštevil (%s).\n"
 	#define _STRING_THREADS_AVAILABLE "Za računanje %s na voljo %d niti.\n"
 	#define _STRING_FILE_OPENING      "Odpiram datoteko s praštevili... "
 	#define _STRING_FILE_READING      "\b\b Berem datoteko... "
@@ -16,7 +16,7 @@
 	#define _STRING_CONTINUE          "Nadaljujem? [Y/n] "
 	#define _STRING_FILE_CANNOT_OPEN  "Ne morem odpreti datoteke. Ustvarim novo? [Y/n] "
 	#define _STRING_THREADS_CREATING  "\rUstvarjam niti..."
-	#define _STRING_WRITING           "\rPraštevil do %u je %u. Zapisujem... \n"
+	#define _STRING_WRITING           "\nPraštevil do %u je %u. \nZapisujem..."
 	#define _STRING_FINISHED          "\rKončano 😀. Čas: %s\n"
 #else
 	#define _STRING_ERR_FPE  "\r🙁 Overflow or division by zero.\n"
@@ -24,7 +24,7 @@
 	#define _STRING_ERR_SEGV "\r🙁 Segmentation fault.\n"
 
 	#define _STRING_MEMORY_COUNTING   "Enquiring about available memory.                       "
-	#define _STRING_MEMORY_REMAINING  "\rThere is room for %u prime numbers in memory (%s).\n"
+	#define _STRING_MEMORY_AVAILABLE  "\rThere is room for %u prime numbers in memory (%s).\n"
 	#define _STRING_THREADS_AVAILABLE "There %s %d threads available.\n"
 	#define _STRING_FILE_OPENING      "Opening file with prime numbers... "
 	#define _STRING_FILE_READING      "\b\b Reading file... "
@@ -34,8 +34,8 @@
 	#define _STRING_CONTINUE          "Continue? [Y/n] "
 	#define _STRING_FILE_CANNOT_OPEN  "Cannot open file. Create new? [Y/n] "
 	#define _STRING_THREADS_CREATING  "\rCreating threads..."
-	#define _STRING_WRITING           "\rTo %d there are %d. Writing... \n"
-	#define _STRING_FINISHED          "\rFinished 😀. Time: %s\n"
+	#define _STRING_WRITING           "\nTo %d there are %d. \nWriting..."
+	#define _STRING_FINISHED          "\rFinished 😀. Time: %s\n\a" // \a <- alert (bell)
 #endif
 
 /* ANSI color escape sequences */

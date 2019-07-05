@@ -1,8 +1,10 @@
 *
 # ignore all except the following:
 !.gitignore
-!Prastevila.c
+!main.c
 !Makefile
 !lib/*
-!results/index.html
+!index.html
 !results/TEST
+!strings.h
+!my_functions.h
