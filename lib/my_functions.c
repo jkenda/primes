@@ -2,9 +2,6 @@
 
 #include <sys/time.h>
 
-#define _FILENAME_TEMP   "/sys/bus/platform/devices/coretemp.0/hwmon/hwmon1/temp1_input"
-#define _FILENAME_USAGE  "/proc/stat"
-
 void debug(int NUM_THREADS, unsigned int *prime_on_thread_counter, unsigned int **primes_on_thread)
 {
   putchar('\n');
@@ -94,7 +91,9 @@ bool strmatch(char* str1, char* str2)
 int get_cpu_temperature() 
 {
   static int temp;
-  FILE* tempInput = fopen(_FILENAME_TEMP, "r");  
+  FILE* tempInput = fopen(_FILENAME_TEMP, "r");
+  if (tempInput == NULL)
+    return -1024;
   fscanf(tempInput, "%d", &temp); 
   fclose(tempInput);
   return temp / 1000;
