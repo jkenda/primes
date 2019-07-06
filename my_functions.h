@@ -24,13 +24,14 @@
 #include <signal.h>      // signal handling (ctrl+C, exceptions)
 #include <stdbool.h>     // boolean library
 #include <string.h>      // string library
+#include <limits.h>
 
 #include "strings.h"      // translation
 
 typedef unsigned int prime_type;
 typedef unsigned char byte;
 
-
+#define _
 #define _FILENAME_USAGE "/proc/stat"
 #define _FILENAME_TEMP  "/sys/class/hwmon/hwmon1/temp1_input"
 #define _FILENAME_PRIMES "results/primes.js"
@@ -65,6 +66,8 @@ time_nanoseconds();
 /* returns pointer to a difference of first and second time */
 struct timespec * 
 subtract_nanoseconds(struct timespec first, struct timespec second);
-/* writes primes to file */
+/* returns difference in seconds */
+float
+subtract_nanoseconds_float(struct timespec first, struct timespec second);
 
 #include "lib/my_functions.c"

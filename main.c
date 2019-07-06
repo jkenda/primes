@@ -41,12 +41,13 @@ void *
 izpisi() 
 { 
 	/* file pointers */
-	FILE *speedOutput;
+	FILE *speed_output;
 
-	struct timespec loop_start;
+	struct timespec loop_start, time_speed;
 	int prime_counter_local, prime_counter_local_old, speed, time_curr;
-	prime_counter_local = 0; prime_counter_local_old = 2; speed = 0;
-	speedOutput = fopen(_FILENAME_SPEED, "w"); fprintf(speedOutput, "speed = [");
+	prime_counter_local = 0; prime_counter_local_old = 2; 
+	speed = 0; time_speed = time_nanoseconds();
+	speed_output = fopen(_FILENAME_SPEED, "w"); fprintf(speed_output, "speed = [");
 	while (!finish) 
 	{
 		loop_start = time_nanoseconds(); loop_start.tv_sec -= 1;
@@ -54,7 +55,11 @@ izpisi()
 			prime_counter_local_old = prime_counter_local;
 		prime_counter_local = prime_counter; 
 		if (prime_counter_local_old != prime_counter_local) 
-			speed = prime_counter_local - prime_counter_local_old; 
+		{
+			speed = (prime_counter_local - prime_counter_local_old) 
+			        / subtract_nanoseconds_float(time_nanoseconds(), time_speed); 
+			time_speed = time_nanoseconds();
+		}
 		time_curr = time(NULL) - time_z;
 
 		printf("\r%u (%u / 1000), %s [%d/s], CPU: %d °C, %u %% ", 
@@ -63,15 +68,15 @@ izpisi()
 			d_h_m_s(time_curr), speed, get_cpu_temperature(), get_cpu_usage()); 
 		fflush(stdout);
 		if (prime_counter_local_old != prime_counter_local) 
-			fprintf(speedOutput, "{x:%d,y:%d},", time_curr, speed);
+			fprintf(speed_output, "{x:%d,y:%d},", time_curr, speed);
 		nanosleep(subtract_nanoseconds(time_nanoseconds(), loop_start), NULL);
 	}
 	time_curr = time(NULL) - time_z;
-	fprintf(speedOutput, "{x:%d,y:%d},", time_curr, speed);
+	fprintf(speed_output, "{x:%d,y:%d},", time_curr, speed);
 	if (prime_counter_local != 0) 
-		fseek(speedOutput, -1, SEEK_CUR);
-	fprintf(speedOutput, "]"); 
-	fclose(speedOutput);
+		fseek(speed_output, -1, SEEK_CUR);
+	fprintf(speed_output, "]"); 
+	fclose(speed_output);
 	return NULL;
 }
 
@@ -90,13 +95,16 @@ is_prime(prime_type candidate)
 prime_type 
 get_primes(prime_type start, prime_type end) 
 {
+	unsigned int local_prime_counter;
+	#pragma omp atomic read
+	local_prime_counter = prime_counter;
+
 	#pragma omp for ordered schedule(simd:static)
 	for (candidate = start; candidate <= end; candidate += 2) 
 	{
-		unsigned int local_prime_counter;
-		#pragma omp atomic read
-		local_prime_counter = prime_counter;
-		if (local_prime_counter >= max_primes || finish) 
+		if (local_prime_counter + prime_on_thread_counter[this_thread()] >= max_primes 
+			|| candidate > UINT_MAX
+			|| finish) 
 			continue;
 		if (is_prime(candidate)) 
 		{
@@ -186,7 +194,9 @@ main(int argc, char **args)
 		max_primes_on_thread[i] = primes_on_thread_memory / sizeof(prime_type);
 
 	/* announce available memory and n. threads */
-	printf(_STRING_MEMORY_AVAILABLE, max_primes, prettify_size(max_memory));
+	printf(_STRING_MEMORY_AVAILABLE, max_memory / sizeof(prime_type), prettify_size(max_memory),
+	                                 max_primes, 
+	                                 prettify_size(primes_memory));
 
 	/* grammar 😃 */
 	printf(_STRING_THREADS_AVAILABLE, grammar(NUM_THREADS), NUM_THREADS);
