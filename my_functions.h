@@ -15,7 +15,7 @@
 	#include <omp.h>     // multithreading
 #else          /* if OpenMP library is not provided */
 	#define omp_get_max_threads() 1
-	#define omp_get_thread_num() 0
+	#define omp_get_thread_num()  0
 #endif
 #ifdef _WIN32 /* if it is compiled for Windows */
 	#include <windows.h> // damn windows needs its own library

@@ -113,7 +113,8 @@ unsigned int get_cpu_usage()
     total_current += total_counting; 
   }
   fclose(usageInput);
-  usage = (unsigned int) (1.0 - (float) (idle_current - idle_last) / (total_current - total_last)) * 100;
+  usage = (unsigned int) ((1.0 - (float) (idle_current - idle_last) / 
+                                (float) (total_current - total_last)) * 100);
   idle_last = idle_current;
   total_last = total_current;
   return usage;
