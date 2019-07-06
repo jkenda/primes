@@ -100,16 +100,15 @@ get_primes(prime_type start, prime_type end)
 			continue;
 		if (is_prime(candidate)) 
 		{
-			if (prime_on_thread_counter[this_thread()] 
-				>= max_primes_on_thread[this_thread()])
+			/*
+			if (prime_on_thread_counter[this_thread()] >= max_primes_on_thread[this_thread()])
 			{
-				realloc(primes_on_thread, 
-					    sizeof(primes_on_thread[this_thread()] 
-					     + sizeof(prime_type)));
+				max_primes_on_thread[this_thread()]++;
+				realloc(primes_on_thread[this_thread()], max_primes_on_thread[this_thread()]);
 			}
+			*/
 			primes_on_thread[omp_get_thread_num()]
-			                [prime_on_thread_counter[omp_get_thread_num()]] 
-			                = candidate;
+			                [prime_on_thread_counter[omp_get_thread_num()]]  = candidate;
 			prime_on_thread_counter[omp_get_thread_num()]++;
 		}
 	}
@@ -123,6 +122,10 @@ insert_primes_from_threads(int NUM_THREADS)
 	for (int i = 0; i < NUM_THREADS; i++) 
 	{
 		#pragma omp ordered
+		/*
+		if (prime_counter + prime_on_thread_counter[i] >= max_primes)
+			realloc(primes, (max_primes_on_thread[i] + prime_on_thread_counter[i]) * sizeof(prime_type));
+		*/
 		for (unsigned int j = 0; j < prime_on_thread_counter[i]; j++) 
 		{
 			primes[prime_counter + j] = primes_on_thread[i][j];
@@ -141,18 +144,6 @@ main(int argc, char **args)
 	/* error handling */
 	signal(SIGFPE, sigFPE); signal(SIGILL, sigILL); signal(SIGSEGV, sigSEGV);
 
-	bool override = false;
-	for (int i = 1; i < argc; i++) 
-	{
-		if (isdigit(args[i][0])) 
-			max_primes = strtol(args[i], NULL, 10); // (-1)
-		else
-		{	
-			if (strmatch(args[i], "--override")) 
-				override = true;
-		}
-	}
-	
 	/* get available threads */
 	int NUM_THREADS;
 	#pragma omp parallel
@@ -160,20 +151,42 @@ main(int argc, char **args)
 
 	printf(_STRING_MEMORY_COUNTING); fflush(stdout);
 	unsigned long max_memory = get_avail_mem(); max_memory -= max_memory / 10;
-	primes_memory = max_memory * 0.66;
-	primes_on_thread_memory = (max_memory - primes_memory) 
-	                          / NUM_THREADS;
 
-	if (!max_primes) 
+	bool override = false;
+	bool use_max_memory = true;
+	for (int i = 1; i < argc; i++) 
+	{
+		if (isdigit(args[i][0])) 
+		{
+			use_max_memory = false;
+			max_primes = strtol(args[i], NULL, 10); // (-1)
+		}
+		else 
+		{
+			if (strmatch(args[i], "--override")) 
+				override = true;
+		}
+	}
+	
+	max_primes_on_thread = malloc(NUM_THREADS * sizeof(unsigned int*));
+	if (!use_max_memory)
+	{		
+		primes_memory = max_primes * 2 * sizeof(prime_type);
+		primes_on_thread_memory = max_primes * 2 * sizeof(unsigned int) / NUM_THREADS;
+	}
+	else
+	{
+		primes_memory = max_memory * 0.66;
+		primes_on_thread_memory = (max_memory - primes_memory) / NUM_THREADS;
+
 		max_primes = primes_memory / sizeof(prime_type);
+	}
 
-	max_primes_on_thread = malloc(NUM_THREADS * sizeof(unsigned int));
 	for (int i = 0; i < NUM_THREADS; i++)
 		max_primes_on_thread[i] = primes_on_thread_memory / sizeof(prime_type);
 
 	/* announce available memory and n. threads */
-	printf(_STRING_MEMORY_AVAILABLE, max_primes, 
-	       prettify_size(max_primes * sizeof(prime_type)));
+	printf(_STRING_MEMORY_AVAILABLE, max_primes, prettify_size(max_memory));
 
 	/* grammar 😃 */
 	printf(_STRING_THREADS_AVAILABLE, grammar(NUM_THREADS), NUM_THREADS);
@@ -281,18 +294,14 @@ main(int argc, char **args)
 
 	/* write ending and close file */
 	for (unsigned int i = written_counter; i < prime_counter; i++) 
-	{
 		fprintf(f, "%d,", primes[i]);
-	}
 	fseek(f, -1, SEEK_END); fprintf(f, " ]"); fclose(f);
 
 
 	/* free primes, primes_on_thread and primes_on_thread_counter */
 	free(primes); 
 	for (int i = 0; i < NUM_THREADS; i++) 
-	{
 		free(primes_on_thread[i]);
-	}
 	free(primes_on_thread);
 	free(prime_on_thread_counter);
 
