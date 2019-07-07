@@ -10,8 +10,8 @@
 
     <link rel="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.8.0/Chart.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.8.0/Chart.min.js"></script>
-    <script type="text/javascript" src="speed.js"></script>
-    <script type="text/javascript" src="primes.js"></script>
+    <script type="text/javascript" src="results/speed.js"></script>
+    <script type="text/javascript" src="results/primes.js"></script>
     <style>
       html, body {
         height: calc(100% - 50px);
@@ -69,11 +69,12 @@
       function naloziDel() {
         var prastevilaElement = "";
         for (var i = stNalozenih; i < (stNalozenih + NALOZI_NAENKRAT - 1 <= primes.length ? stNalozenih + NALOZI_NAENKRAT : primes.length); i++) {
-          prastevilaElement += primes[i] + (i != (primes.length) ? ", " : ".");
+          prastevilaElement += primes[i] + (i != (primes.length - 1) ? ", " : ".");
         }
         stNalozenih += i;
 
         $("#primes").append(prastevilaElement);
+        if (stNalozenih == primes.length) $("#load-more").hide();
       }
 
       function prilagodiGraf() {
@@ -88,7 +89,7 @@
         for (var i = 0; i < speed.length; i++) povprecje += parseInt(speed[i].y);
         if (speed.length != 0) {
           povprecje /= speed.length;
-          $("#zadnjiPodatek").text(speed[speed.length - 1].x);
+          $("#zadnjiPodatek").text(primes[primes.length - 1]);
         }
         else {
           $("#graf").hide();
@@ -105,7 +106,7 @@
           data: {
             datasets: [{
               showLine: true,
-              pointRadius: 0,
+              //pointRadius: 0,
               label: "Calculation speed [time]",
               borderColor: 'red',
               data: speed
@@ -164,7 +165,7 @@
     </nav>
 
     <div id="kontejner" class="container-fluid">
-      <div class="alert alert-info">Zadnji podatek: <span id="zadnjiPodatek"></span></div>
+      <div class="alert alert-info">Last prime: <span id="zadnjiPodatek"></span></div>
       <div id="hitrost">
         <canvas id="graf" style="width: 100%; height: 100%;"></canvas>
       </div>
