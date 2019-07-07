@@ -7,9 +7,7 @@
 #include <stdio.h>       // I/0 (reading and writing on screen / to file)
 #include <stdlib.h>      // malloc (allocating memory)
 #include <ctype.h>       // idigit()
-#include <time.h>        // measuring time consumption
 #include <sys/time.h>    // getting time in nanoseconds
-#include <math.h>        // log2()
 #include <pthread.h>     // thread for info screen
 #ifdef _OPENMP /* if OpenMP library is provided */
 	#include <omp.h>     // multithreading
@@ -24,7 +22,7 @@
 #include <signal.h>      // signal handling (ctrl+C, exceptions)
 #include <stdbool.h>     // boolean library
 #include <string.h>      // string library
-#include <limits.h>
+#include <errno.h>       // errno
 
 #include "strings.h"      // translation
 

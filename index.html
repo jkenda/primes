@@ -89,7 +89,7 @@
         for (var i = 0; i < speed.length; i++) povprecje += parseInt(speed[i].y);
         if (speed.length != 0) {
           povprecje /= speed.length;
-          $("#zadnjiPodatek").text(speed[speed.length - 1].x);
+          $("#zadnjiPodatek").text(primes[primes.length - 1]);
         }
         else {
           $("#graf").hide();
@@ -165,7 +165,7 @@
     </nav>
 
     <div id="kontejner" class="container-fluid">
-      <div class="alert alert-info">Time: <span id="zadnjiPodatek"></span></div>
+      <div class="alert alert-info">Last prime: <span id="zadnjiPodatek"></span></div>
       <div id="hitrost">
         <canvas id="graf" style="width: 100%; height: 100%;"></canvas>
       </div>

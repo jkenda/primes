@@ -109,8 +109,9 @@ get_cpu_temperature()
 unsigned int 
 get_cpu_usage() 
 {
-	static double raw[4], idle_prev = 0, idle, total_prev = 0, total;
-	static int usage;
+	static double idle_prev = 0, total_prev = 0;
+	double raw[4], idle, total;
+	unsigned int usage;
 	FILE *usage_input = fopen(_FILENAME_USAGE, "r"); 
 	fseek(usage_input, 4, SEEK_CUR); 
 	fscanf(usage_input, "%*s %lf %lf %lf %lf", &raw[0], &raw[1], &raw[2], &raw[3]);
@@ -120,7 +121,7 @@ get_cpu_usage()
 	usage = (int) ((idle - idle_prev) / (total - total_prev) * 100);
 	idle_prev = idle;
 	total_prev = total;
-	return (usage > 100 ? 100 : usage);
+	return (usage);
 }
 
 struct 
@@ -146,3 +147,11 @@ subtract_nanoseconds_float(struct timespec first, struct timespec second)
 	return (first.tv_sec - second.tv_sec) 
 	       + (first.tv_nsec - second.tv_nsec) / 1000000000;
 }
+
+float 
+add_nanoseconds_float(struct timespec first, struct timespec second)
+{
+	return (first.tv_sec + second.tv_sec) 
+	       + (first.tv_nsec + second.tv_nsec) / 1000000000;
+}
+
