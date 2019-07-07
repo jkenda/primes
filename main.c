@@ -104,10 +104,11 @@ prime_type
 get_primes(prime_type start, prime_type end) 
 {
 	unsigned int local_prime_counter;
-	#pragma omp atomic read
+	//#pragma omp atomic read
 	local_prime_counter = prime_counter;
 
-	#pragma omp for ordered schedule(simd:static)
+	#pragma omp target
+	#pragma omp teams distribute parallel for 
 	for (candidate = start; candidate <= end; candidate += 2) 
 	{
 		if (local_prime_counter + prime_on_thread_counter[this_thread()] >= max_primes)
@@ -134,10 +135,10 @@ get_primes(prime_type start, prime_type end)
 void 
 insert_primes_from_threads(int NUM_THREADS) 
 {
-	#pragma omp for ordered schedule(simd:static)
+	//#pragma omp for ordered schedule(simd:static)
 	for (int i = 0; i < NUM_THREADS; i++) 
 	{
-		#pragma omp ordered
+		//#pragma omp ordered
 		/*
 		if (prime_counter + prime_on_thread_counter[i] >= max_primes)
 			realloc(primes, (max_primes_on_thread[i] + prime_on_thread_counter[i]) * sizeof(prime_type));
@@ -146,7 +147,7 @@ insert_primes_from_threads(int NUM_THREADS)
 		{
 			primes[prime_counter + j] = primes_on_thread[i][j];
 		}
-		#pragma omp atomic update
+		//#pragma omp atomic update
 		prime_counter += prime_on_thread_counter[i];
 		prime_on_thread_counter[i] = 0;
 	}
@@ -161,9 +162,10 @@ main(int argc, char **args)
 	signal(SIGFPE, sigFPE); signal(SIGILL, sigILL); signal(SIGSEGV, sigSEGV);
 
 	/* get available threads */
-	int NUM_THREADS;
+	int NUM_THREADS, NUM_DEVICES;
 	#pragma omp parallel
 	NUM_THREADS = omp_get_max_threads();
+	NUM_DEVICES = omp_get_num_devices();
 
 	printf(_STRING_MEMORY_COUNTING); fflush(stdout);
 	unsigned long max_memory = get_avail_mem(); max_memory -= max_memory / 10;
@@ -207,7 +209,7 @@ main(int argc, char **args)
 	                                 prettify_size(primes_memory));
 
 	/* grammar 😃 */
-	printf(_STRING_THREADS_AVAILABLE, grammar(NUM_THREADS), NUM_THREADS);
+	printf(_STRING_THREADS_AVAILABLE, grammar(NUM_THREADS), NUM_THREADS, NUM_DEVICES);
 
 	/* allocate available memory for primes */
 	primes = malloc(primes_memory - (primes_memory % sizeof(prime_type)));
@@ -289,7 +291,6 @@ main(int argc, char **args)
 	prime_type start = primes[prime_counter - 1] + 2;
 	prime_type end   = start + primes[prime_counter - 1] - 1;
 
-	#pragma omp parallel shared(prime_counter)
 	while (prime_counter < max_primes && !exit_flag) 
 	{
 		start = get_primes(start, end) + 2;
