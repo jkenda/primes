@@ -5,9 +5,9 @@
 #include "my_functions.h"     // translation
 
 bool exit_flag = false;
-prime_type candidate, *primes, **primes_on_thread;
-unsigned int prime_counter, *prime_on_thread_counter, max_primes = 0, *max_primes_on_thread;
-unsigned long primes_memory, primes_on_thread_memory, time_z;
+prime_type candidate, *primes;
+unsigned int prime_counter, max_primes = 0;
+unsigned long primes_memory, time_z;
 
 void 
 sigFPE() 
@@ -100,55 +100,16 @@ is_prime(prime_type candidate)
 	return !has_denominators;
 }
 
-prime_type 
-get_primes(prime_type start, prime_type end) 
+void 
+get_primes(prime_type start) 
 {
-	unsigned int local_prime_counter;
-	#pragma omp atomic read
-	local_prime_counter = prime_counter;
-
-	#pragma omp for ordered schedule(simd:static)
-	for (candidate = start; candidate <= end; candidate += 2) 
+	for (candidate = start; prime_counter < max_primes && !exit_flag; candidate += 2) 
 	{
-		if (local_prime_counter + prime_on_thread_counter[this_thread()] >= max_primes)
-			exit_flag = true;
-		if (exit_flag) 
-			continue;
 		if (is_prime(candidate)) 
 		{
-			/*
-			if (prime_on_thread_counter[this_thread()] >= max_primes_on_thread[this_thread()])
-			{
-				max_primes_on_thread[this_thread()]++;
-				realloc(primes_on_thread[this_thread()], max_primes_on_thread[this_thread()]);
-			}
-			*/
-			primes_on_thread[omp_get_thread_num()]
-			                [prime_on_thread_counter[omp_get_thread_num()]]  = candidate;
-			prime_on_thread_counter[omp_get_thread_num()]++;
+			primes[prime_counter]  = candidate;
+			prime_counter++;
 		}
-	}
-	return end;
-}
-
-void 
-insert_primes_from_threads(int NUM_THREADS) 
-{
-	#pragma omp for ordered schedule(simd:static)
-	for (int i = 0; i < NUM_THREADS; i++) 
-	{
-		#pragma omp ordered
-		/*
-		if (prime_counter + prime_on_thread_counter[i] >= max_primes)
-			realloc(primes, (max_primes_on_thread[i] + prime_on_thread_counter[i]) * sizeof(prime_type));
-		*/
-		for (unsigned int j = 0; j < prime_on_thread_counter[i]; j++) 
-		{
-			primes[prime_counter + j] = primes_on_thread[i][j];
-		}
-		#pragma omp atomic update
-		prime_counter += prime_on_thread_counter[i];
-		prime_on_thread_counter[i] = 0;
 	}
 }
 
@@ -160,13 +121,8 @@ main(int argc, char **args)
 	/* error handling */
 	signal(SIGFPE, sigFPE); signal(SIGILL, sigILL); signal(SIGSEGV, sigSEGV);
 
-	/* get available threads */
-	int NUM_THREADS;
-	#pragma omp parallel
-	NUM_THREADS = omp_get_max_threads();
-
 	printf(_STRING_MEMORY_COUNTING); fflush(stdout);
-	unsigned long max_memory = get_avail_mem(); max_memory -= max_memory / 10;
+	unsigned long max_memory = get_avail_mem() * 0.90;
 
 	bool override = false;
 	bool use_max_memory = true;
@@ -184,40 +140,20 @@ main(int argc, char **args)
 		}
 	}
 	
-	max_primes_on_thread = malloc(NUM_THREADS * sizeof(unsigned int*));
 	if (!use_max_memory)
-	{		
-		primes_memory = max_primes * 2 * sizeof(prime_type);
-		primes_on_thread_memory = max_primes * 2 * sizeof(unsigned int) / NUM_THREADS;
-	}
+		primes_memory = max_primes * sizeof(prime_type);
 	else
 	{
-		primes_memory = max_memory * 0.66;
-		primes_on_thread_memory = (max_memory - primes_memory) / NUM_THREADS;
-
+		primes_memory = max_memory;
 		max_primes = primes_memory / sizeof(prime_type);
 	}
 
-	for (int i = 0; i < NUM_THREADS; i++)
-		max_primes_on_thread[i] = primes_on_thread_memory / sizeof(prime_type);
-
-	/* announce available memory and n. threads */
+	/* announce available memory */
 	printf(_STRING_MEMORY_AVAILABLE, max_memory / sizeof(prime_type), prettify_size(max_memory),
-	                                 max_primes, 
-	                                 prettify_size(primes_memory));
-
-	/* grammar 😃 */
-	printf(_STRING_THREADS_AVAILABLE, grammar(NUM_THREADS), NUM_THREADS);
+	                                 max_primes, prettify_size(primes_memory));
 
 	/* allocate available memory for primes */
 	primes = malloc(primes_memory - (primes_memory % sizeof(prime_type)));
-	primes_on_thread = malloc(NUM_THREADS * sizeof(prime_type*));
-	prime_on_thread_counter = malloc(NUM_THREADS * sizeof(unsigned int*));
-	for (int i = 0; i < NUM_THREADS; i++) 
-	{
-		primes_on_thread[i] = malloc(primes_on_thread_memory);
-		prime_on_thread_counter[i] = 0;
-	}
 
 	unsigned int written_counter; 
 	char answer;
@@ -280,27 +216,13 @@ main(int argc, char **args)
 	printf(_STRING_THREADS_CREATING); fflush(stdout);
 
 	/* initialize and start info thread */
-	time_z = time(NULL) - time_combined;
+	time_z = time(NULL);
 	pthread_t status_screen;
-	pthread_create(&status_screen, NULL, izpisi, &NUM_THREADS);
+	pthread_create(&status_screen, NULL, izpisi, NULL);
 
 	/* HEART OF THE PROGRAM */
 	/* calculate primes */
-	prime_type start = primes[prime_counter - 1] + 2;
-	prime_type end   = start + primes[prime_counter - 1] - 1;
-
-	#pragma omp parallel shared(prime_counter)
-	while (prime_counter < max_primes && !exit_flag) 
-	{
-		start = get_primes(start, end) + 2;
-		end = start + primes[prime_counter - 1] - 1;
-
-		#if DEBUG
-		debug(NUM_THREADS, &prime_on_thread_counter[0], &primes_on_thread[0]);
-		#endif
-
-		insert_primes_from_threads(NUM_THREADS);
-	}
+	get_primes(primes[prime_counter - 1] + 2);
 
 	/* when calculation ends */
 	unsigned long time_k = time(NULL);
@@ -313,7 +235,7 @@ main(int argc, char **args)
 	printf(_STRING_WRITING, primes[prime_counter - 1], prime_counter);
 	fflush(stdout);
 
-	/* write newly calculated primes as a javascript file to be opened by results/index.html */
+	/* write newly calculated primes as a javascript file to be opened by index.html */
 	if (written_counter == 0) 
 	{
 		f = fopen(_FILENAME_PRIMES, "w");
@@ -333,12 +255,8 @@ main(int argc, char **args)
 	fprintf(f, "]"); 
 	fclose(f);
 
-	/* free primes, primes_on_thread and primes_on_thread_counter */
+	/* free primes */
 	free(primes); 
-	for (int i = 0; i < NUM_THREADS; i++) 
-		free(primes_on_thread[i]);
-	free(primes_on_thread);
-	free(prime_on_thread_counter);
 
 	printf(_STRING_FINISHED, d_h_m_s(time_k - time_z));
 	return errno;
