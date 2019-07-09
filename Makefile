@@ -1,8 +1,7 @@
 # Copyright (C) 2019 Jakob Kenda
 
-CFLAGS = -O3 -mtune=native -std=c99 -pedantic -Wall -Wextra
-LIBS = -lpthread -fopenmp -lm
-OMP_CANCELLATION = true
+CFLAGS = -O3 -mtune=native -std=c99 -pedantic -Wall -Wextra -fno-stack-protector
+LIBS = -lpthread -fopenacc -lm
 LANGUAGE = "en"
 DEBUG = false
 

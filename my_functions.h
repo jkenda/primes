@@ -9,8 +9,8 @@
 #include <ctype.h>       // idigit()
 #include <sys/time.h>    // getting time in nanoseconds
 #include <pthread.h>     // thread for info screen
-#ifdef _OPENMP /* if OpenMP library is provided */
-	#include <omp.h>     // multithreading
+#ifdef _OPENACC /* if OpenMP library is provided */
+	#include <openacc.h>     // multithreading
 #else          /* if OpenMP library is not provided */
 	#define omp_get_max_threads() 1
 	#define omp_get_thread_num()  0

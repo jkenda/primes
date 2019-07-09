@@ -5,7 +5,7 @@
 #include "my_functions.h"     // translation
 
 bool exit_flag = false;
-prime_type candidate, *primes, **primes_on_thread;
+prime_type *primes, **primes_on_thread;
 unsigned int prime_counter, *prime_on_thread_counter, max_primes = 0, *max_primes_on_thread;
 unsigned long primes_memory, primes_on_thread_memory, time_z;
 
@@ -89,10 +89,11 @@ izpisi()
 }
 
 bool 
-is_prime(prime_type candidate) 
+is_prime(prime_type candidate, unsigned int end) 
 {
 	bool has_denominators = false;
-	for (unsigned int i = 0; !has_denominators && i < prime_counter; i++) 
+	#pragma acc kernels
+	for (unsigned int i = 0; !has_denominators && i < end; i++) 
 	{
 		if (candidate % primes[i] == 0) 
 			has_denominators = true;
@@ -104,29 +105,24 @@ prime_type
 get_primes(prime_type start, prime_type end) 
 {
 	unsigned int local_prime_counter;
-	//#pragma omp atomic read
-	local_prime_counter = prime_counter;
+	unsigned int start_counter = prime_counter;
 
-	#pragma omp target
-	#pragma omp teams distribute parallel for 
-	for (candidate = start; candidate <= end; candidate += 2) 
+	#pragma acc data copyout(prime_counter)
+	#pragma acc kernels
+	for (prime_type candidate = start; candidate <= end; candidate += 2) 
 	{
-		if (local_prime_counter + prime_on_thread_counter[this_thread()] >= max_primes)
+		#pragma acc atomic read
+		local_prime_counter = prime_counter;
+		if (local_prime_counter >= max_primes)
 			exit_flag = true;
 		if (exit_flag) 
 			continue;
-		if (is_prime(candidate)) 
+		if (is_prime(candidate, start_counter)) 
 		{
-			/*
-			if (prime_on_thread_counter[this_thread()] >= max_primes_on_thread[this_thread()])
-			{
-				max_primes_on_thread[this_thread()]++;
-				realloc(primes_on_thread[this_thread()], max_primes_on_thread[this_thread()]);
-			}
-			*/
-			primes_on_thread[omp_get_thread_num()]
-			                [prime_on_thread_counter[omp_get_thread_num()]]  = candidate;
-			prime_on_thread_counter[omp_get_thread_num()]++;
+			#pragma acc wait
+			primes[prime_counter] = candidate;
+			#pragma acc atomic update
+			prime_counter++;
 		}
 	}
 	return end;
@@ -135,10 +131,10 @@ get_primes(prime_type start, prime_type end)
 void 
 insert_primes_from_threads(int NUM_THREADS) 
 {
-	//#pragma omp for ordered schedule(simd:static)
+	//#pragma acc for ordered schedule(simd:static)
 	for (int i = 0; i < NUM_THREADS; i++) 
 	{
-		//#pragma omp ordered
+		//#pragma acc ordered
 		/*
 		if (prime_counter + prime_on_thread_counter[i] >= max_primes)
 			realloc(primes, (max_primes_on_thread[i] + prime_on_thread_counter[i]) * sizeof(prime_type));
@@ -147,7 +143,7 @@ insert_primes_from_threads(int NUM_THREADS)
 		{
 			primes[prime_counter + j] = primes_on_thread[i][j];
 		}
-		//#pragma omp atomic update
+		//#pragma acc atomic update
 		prime_counter += prime_on_thread_counter[i];
 		prime_on_thread_counter[i] = 0;
 	}
@@ -162,10 +158,9 @@ main(int argc, char **args)
 	signal(SIGFPE, sigFPE); signal(SIGILL, sigILL); signal(SIGSEGV, sigSEGV);
 
 	/* get available threads */
-	int NUM_THREADS, NUM_DEVICES;
-	#pragma omp parallel
-	NUM_THREADS = omp_get_max_threads();
-	NUM_DEVICES = omp_get_num_devices();
+	int NUM_DEVICES;
+	#pragma acc parallel
+	NUM_DEVICES = acc_get_num_devices(acc_get_device_type());
 
 	printf(_STRING_MEMORY_COUNTING); fflush(stdout);
 	unsigned long max_memory = get_avail_mem(); max_memory -= max_memory / 10;
@@ -186,22 +181,16 @@ main(int argc, char **args)
 		}
 	}
 	
-	max_primes_on_thread = malloc(NUM_THREADS * sizeof(unsigned int*));
 	if (!use_max_memory)
 	{		
 		primes_memory = max_primes * 2 * sizeof(prime_type);
-		primes_on_thread_memory = max_primes * 2 * sizeof(unsigned int) / NUM_THREADS;
 	}
 	else
 	{
 		primes_memory = max_memory * 0.66;
-		primes_on_thread_memory = (max_memory - primes_memory) / NUM_THREADS;
 
 		max_primes = primes_memory / sizeof(prime_type);
 	}
-
-	for (int i = 0; i < NUM_THREADS; i++)
-		max_primes_on_thread[i] = primes_on_thread_memory / sizeof(prime_type);
 
 	/* announce available memory and n. threads */
 	printf(_STRING_MEMORY_AVAILABLE, max_memory / sizeof(prime_type), prettify_size(max_memory),
@@ -209,17 +198,10 @@ main(int argc, char **args)
 	                                 prettify_size(primes_memory));
 
 	/* grammar 😃 */
-	printf(_STRING_THREADS_AVAILABLE, grammar(NUM_THREADS), NUM_THREADS, NUM_DEVICES);
+	printf(_STRING_DEVICES, grammar(NUM_DEVICES), NUM_DEVICES);
 
 	/* allocate available memory for primes */
-	primes = malloc(primes_memory - (primes_memory % sizeof(prime_type)));
-	primes_on_thread = malloc(NUM_THREADS * sizeof(prime_type*));
-	prime_on_thread_counter = malloc(NUM_THREADS * sizeof(unsigned int*));
-	for (int i = 0; i < NUM_THREADS; i++) 
-	{
-		primes_on_thread[i] = malloc(primes_on_thread_memory);
-		prime_on_thread_counter[i] = 0;
-	}
+	primes = (prime_type*) malloc(primes_memory - (primes_memory % sizeof(prime_type)));
 
 	unsigned int written_counter; 
 	char answer;
@@ -284,23 +266,18 @@ main(int argc, char **args)
 	/* initialize and start info thread */
 	time_z = time(NULL) - time_combined;
 	pthread_t status_screen;
-	pthread_create(&status_screen, NULL, izpisi, &NUM_THREADS);
+	pthread_create(&status_screen, NULL, izpisi, NULL);
 
 	/* HEART OF THE PROGRAM */
 	/* calculate primes */
 	prime_type start = primes[prime_counter - 1] + 2;
 	prime_type end   = start + primes[prime_counter - 1] - 1;
 
+	#pragma acc data copy(primes[0:prime_counter - 1], prime_counter)
 	while (prime_counter < max_primes && !exit_flag) 
 	{
 		start = get_primes(start, end) + 2;
 		end = start + primes[prime_counter - 1] - 1;
-
-		#if DEBUG
-		debug(NUM_THREADS, &prime_on_thread_counter[0], &primes_on_thread[0]);
-		#endif
-
-		insert_primes_from_threads(NUM_THREADS);
 	}
 
 	/* when calculation ends */
@@ -336,10 +313,6 @@ main(int argc, char **args)
 
 	/* free primes, primes_on_thread and primes_on_thread_counter */
 	free(primes); 
-	for (int i = 0; i < NUM_THREADS; i++) 
-		free(primes_on_thread[i]);
-	free(primes_on_thread);
-	free(prime_on_thread_counter);
 
 	printf(_STRING_FINISHED, d_h_m_s(time_k - time_z));
 	return errno;
