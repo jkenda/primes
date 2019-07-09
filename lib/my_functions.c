@@ -41,21 +41,20 @@ get_avail_mem()
 }
 
 char * 
-prettify_size(unsigned long bytes) 
+prettify_size(float bytes) 
 {
-	static char velikost_enota[10];
-	float bytesFloat = (float) bytes;
+	char *velikost_enota = malloc(10 * sizeof(char));
 	char enota[3] = "B";
-	if (bytesFloat >= 1000) {
-		bytesFloat /= 1000; strcpy(enota, "kB");
+	if (bytes >= 1000) {
+		bytes /= 1000; strcpy(enota, "kB");
 	}
-	if (bytesFloat >= 1000) {
-		bytesFloat /= 1000; strcpy(enota, "MB");
+	if (bytes >= 1000) {
+		bytes /= 1000; strcpy(enota, "MB");
 	}
-	if (bytesFloat >= 1000) {
-		bytesFloat /= 1000; strcpy(enota, "GB");
+	if (bytes >= 1000) {
+		bytes /= 1000; strcpy(enota, "GB");
 	}
-	sprintf(velikost_enota, "%.2f %s", bytesFloat, enota);
+	sprintf(velikost_enota, "%.2f %s", bytes, enota);
 	return velikost_enota;
 }
 
@@ -133,7 +132,7 @@ timespec time_nanoseconds()
 }
 
 struct 
-timespec* subtract_nanoseconds(struct timespec first, struct timespec second)
+timespec *subtract_nanoseconds(struct timespec first, struct timespec second)
 {
 	static struct timespec subtracted;
 	subtracted.tv_sec = first.tv_sec - second.tv_sec;
@@ -155,3 +154,14 @@ add_nanoseconds_float(struct timespec first, struct timespec second)
 	       + (first.tv_nsec + second.tv_nsec) / 1000000000;
 }
 
+void
+progressbar(int width, float progress)
+{
+	putchar('[');
+	for (int i = 0; i < width * progress - 3; i++)
+		putchar('=');
+	putchar('>');
+	for(int i = width * progress - 2; i < width; i++)
+		putchar(' ');
+	putchar(']');
+}

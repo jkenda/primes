@@ -6,7 +6,7 @@
 	#define _STRING_ERR_SEGV "\n🙁 Program je poskusil dostopati do podatkov, ki niso njegovi.\n"
 
 	#define _STRING_MEMORY_COUNTING   "Štejem, koliko spomina je na voljo."
-	#define _STRING_MEMORY_AVAILABLE  "\rV pomnilniku je prostor za %lu praštevil (%s),\n\
+	#define _STRING_MEMORY_AVAILABLE  "\rProstega je %s pomnilnika,    \n\
 dodeljen je pomnilnik za %u praštevil (%s).\n"
 	#define _STRING_THREADS_AVAILABLE "Za računanje %s na voljo %d niti.\n"
 	#define _STRING_FILE_OPENING      "Odpiram datoteko s praštevili... "
@@ -25,7 +25,7 @@ dodeljen je pomnilnik za %u praštevil (%s).\n"
 	#define _STRING_ERR_SEGV "\r🙁 Segmentation fault.\n"
 
 	#define _STRING_MEMORY_COUNTING   "Enquiring about available memory.                       "
-	#define _STRING_MEMORY_AVAILABLE  "\rThere is room for %lu prime numbers in memory (%s),\n\
+	#define _STRING_MEMORY_AVAILABLE  "\r%s of emmory is free,            \n\
 memory for %u primes is allocated (%s).\n"
 	#define _STRING_THREADS_AVAILABLE "There %s %d threads available.\n"
 	#define _STRING_FILE_OPENING      "Opening file with prime numbers... "

@@ -8,6 +8,7 @@
 #include <stdlib.h>      // malloc (allocating memory)
 #include <ctype.h>       // idigit()
 #include <sys/time.h>    // getting time in nanoseconds
+#include <sys/ioctl.h>
 #include <pthread.h>     // thread for info screen
 #ifdef _OPENMP /* if OpenMP library is provided */
 	#include <omp.h>     // multithreading
@@ -42,7 +43,7 @@ unsigned long
 get_avail_mem();
 /* returns kB, MB, GB from B given */
 char *
-prettify_size(unsigned long bytes);
+prettify_size(float bytes);
 /* returns "is" or "are" according to a number given */
 char *
 grammar(unsigned char stevilo);
@@ -62,10 +63,12 @@ get_cpu_usage();
 struct timespec 
 time_nanoseconds();
 /* returns pointer to a difference of first and second time */
-struct timespec * 
+struct timespec *
 subtract_nanoseconds(struct timespec first, struct timespec second);
 /* returns difference in seconds */
 float
 subtract_nanoseconds_float(struct timespec first, struct timespec second);
-
+/* draws progressbar */
+void
+progressbar(int width, float progress);
 #include "lib/my_functions.c"

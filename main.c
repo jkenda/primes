@@ -4,10 +4,13 @@
 
 #include "my_functions.h"     // translation
 
+float MULTIPLIER = 0.25;
+
 bool exit_flag = false;
 prime_type candidate, *primes, **primes_on_thread;
 unsigned int prime_counter, *prime_on_thread_counter, max_primes = 0, *max_primes_on_thread;
-unsigned long primes_memory, primes_on_thread_memory, time_z;
+unsigned long primes_memory, primes_on_thread_memory;
+struct timespec time_z;
 
 void 
 sigFPE() 
@@ -42,45 +45,46 @@ izpisi()
 { 
 	/* file pointers */
 	FILE *speed_output;
-
-	struct timespec loop_start, time_speed;
-	unsigned int pc_local, pc_local_old, pc_estimate, speed, time_curr;
+	
+	struct timespec loop_start, time_speed, time_curr = time_nanoseconds();
+	unsigned int pc_local, pc_local_old, pc_estimate, speed, speed_measured;
 	pc_local = 2; pc_local_old = 0; pc_estimate = 2; 
 	speed = 0; time_speed = time_nanoseconds();
 	speed_output = fopen(_FILENAME_SPEED, "w"); fprintf(speed_output, "speed = [");
 	while (!exit_flag) 
 	{
+		/* get loop start time */
 		loop_start = time_nanoseconds(); loop_start.tv_sec -= 1;
+
 		pc_local_old = pc_local;
 		pc_local = prime_counter; 
 		if (pc_local_old != pc_local) 
-		{
-			speed = (pc_local - pc_local_old) 
-			        / subtract_nanoseconds_float(time_nanoseconds(), time_speed); 
+		{ // prime_counter has changed (new batch of primes calculated)
+			speed_measured = (pc_local - pc_local_old) / subtract_nanoseconds_float(time_nanoseconds(), time_speed); 
 			time_speed = time_nanoseconds();
+			speed = speed_measured * (1 - MULTIPLIER) - speed * MULTIPLIER;
 		}
 		else
 		{
 			pc_estimate = pc_local + subtract_nanoseconds_float(time_nanoseconds(), time_speed) * speed;
 		}
-		time_curr = time(NULL) - time_z;
-
-		if (pc_estimate > pc_local)
-			printf("\r%u (%u / 1000), %s [%u/s], CPU: %d °C, %u %% (estimated)", 
-				pc_estimate, 
-				(int) (pc_estimate * 1000 / max_primes), 
-				d_h_m_s(time_curr), speed, get_cpu_temperature(), get_cpu_usage()); 
-		else
-			printf("\r%u (%u / 1000), %s [%u/s], CPU: %d °C, %u %%            ", 
-				pc_local, 
-				(int) (pc_local * 1000 / max_primes), 
-				d_h_m_s(time_curr), speed, get_cpu_temperature(), get_cpu_usage()); 
+		time_curr = *subtract_nanoseconds(time_nanoseconds(), time_z);
+		
+		printf("\r%u (%u / 1000), %s [%u/s], CPU: %d °C, %u %% %s ", 
+			pc_estimate > pc_local ? pc_estimate : pc_local, 
+			(int) ((pc_estimate > pc_local ? pc_estimate : pc_local) * 1000 / max_primes), 
+			d_h_m_s(time_curr.tv_sec), speed, get_cpu_temperature(), get_cpu_usage(),
+			pc_estimate > pc_local ? "(estimated)" : "           "); 
 		fflush(stdout);
+		
+		/* write speed to file after new batch of primes has been calculated */
 		if (pc_local_old != pc_local) 
-			fprintf(speed_output, "{x:%u,y:%u},", time_curr, speed);
+			fprintf(speed_output, "{x:%u,y:%u},", (unsigned int) time_curr.tv_sec, speed);
+		
+		/* sleep for 1s - loop execution time */
 		nanosleep(subtract_nanoseconds(time_nanoseconds(), loop_start), NULL);
 	}
-	fprintf(speed_output, "{x:%u,y:%u},", time_curr, speed);
+	fprintf(speed_output, "{x:%u,y:%u},", (unsigned int) time_curr.tv_sec, speed);
 	if (pc_local != 0) 
 		fseek(speed_output, -1, SEEK_CUR);
 	fprintf(speed_output, "]"); 
@@ -138,17 +142,16 @@ insert_primes_from_threads(int NUM_THREADS)
 	for (int i = 0; i < NUM_THREADS; i++) 
 	{
 		#pragma omp ordered
-		/*
-		if (prime_counter + prime_on_thread_counter[i] >= max_primes)
-			realloc(primes, (max_primes_on_thread[i] + prime_on_thread_counter[i]) * sizeof(prime_type));
-		*/
-		for (unsigned int j = 0; j < prime_on_thread_counter[i]; j++) 
 		{
-			primes[prime_counter + j] = primes_on_thread[i][j];
+			#pragma omp simd
+			for (unsigned int j = 0; j < prime_on_thread_counter[i]; j++) 
+			{
+				primes[prime_counter + j] = primes_on_thread[i][j];
+			}
+			#pragma omp atomic update
+			prime_counter += prime_on_thread_counter[i];
+			prime_on_thread_counter[i] = 0;
 		}
-		#pragma omp atomic update
-		prime_counter += prime_on_thread_counter[i];
-		prime_on_thread_counter[i] = 0;
 	}
 }
 
@@ -202,7 +205,7 @@ main(int argc, char **args)
 		max_primes_on_thread[i] = primes_on_thread_memory / sizeof(prime_type);
 
 	/* announce available memory and n. threads */
-	printf(_STRING_MEMORY_AVAILABLE, max_memory / sizeof(prime_type), prettify_size(max_memory),
+	printf(_STRING_MEMORY_AVAILABLE, prettify_size(max_memory),
 	                                 max_primes, 
 	                                 prettify_size(primes_memory));
 
@@ -210,7 +213,7 @@ main(int argc, char **args)
 	printf(_STRING_THREADS_AVAILABLE, grammar(NUM_THREADS), NUM_THREADS);
 
 	/* allocate available memory for primes */
-	primes = malloc(primes_memory - (primes_memory % sizeof(prime_type)));
+	primes = malloc(primes_memory);
 	primes_on_thread = malloc(NUM_THREADS * sizeof(prime_type*));
 	prime_on_thread_counter = malloc(NUM_THREADS * sizeof(unsigned int*));
 	for (int i = 0; i < NUM_THREADS; i++) 
@@ -223,7 +226,6 @@ main(int argc, char **args)
 	char answer;
 
 	/* read primes from file */
-	unsigned long time_combined = 0;
 	FILE *f;
 	if (!override) // override argument is not present
 	{
@@ -280,7 +282,7 @@ main(int argc, char **args)
 	printf(_STRING_THREADS_CREATING); fflush(stdout);
 
 	/* initialize and start info thread */
-	time_z = time(NULL) - time_combined;
+	time_z = time_nanoseconds();
 	pthread_t status_screen;
 	pthread_create(&status_screen, NULL, izpisi, &NUM_THREADS);
 
@@ -303,7 +305,7 @@ main(int argc, char **args)
 	}
 
 	/* when calculation ends */
-	unsigned long time_k = time(NULL);
+	struct timespec time_k = time_nanoseconds();
 	exit_flag = true; 
 	pthread_join(status_screen, NULL);
 	
@@ -340,6 +342,6 @@ main(int argc, char **args)
 	free(primes_on_thread);
 	free(prime_on_thread_counter);
 
-	printf(_STRING_FINISHED, d_h_m_s(time_k - time_z));
+	printf(_STRING_FINISHED, d_h_m_s(time_k.tv_sec - time_z.tv_sec));
 	return errno;
 }
