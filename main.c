@@ -82,7 +82,7 @@ izpisi()
 	}
 	fprintf(speed_output, "{x:%u,y:%u},", time_curr, speed);
 	if (pc_local != 0) 
-		fseek(speed_output, -1, SEEK_CUR);
+		fseek(speed_output, -1L, SEEK_CUR);
 	fprintf(speed_output, "]"); 
 	fclose(speed_output);
 	return NULL;
@@ -159,7 +159,6 @@ main(int argc, char **args)
 	char answer;
 
 	/* read primes from file */
-	unsigned long time_combined = 0;
 	FILE *f;
 	if (!override) // override argument is not present
 	{
