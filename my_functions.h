@@ -32,7 +32,7 @@ typedef unsigned char byte;
 
 #define _
 #define _FILENAME_USAGE "/proc/stat"
-#define _FILENAME_TEMP  "/sys/class/hwmon/hwmon1/temp1_input"
+#define _FILENAME_TEMP  "/sys/bus/platform/devices/coretemp.0/hwmon/hwmon3/temp1_input"
 #define _FILENAME_PRIMES "results/primes.js"
 #define _FILENAME_SPEED  "results/speed.js"
 

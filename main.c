@@ -79,12 +79,13 @@ izpisi()
 		
 		/* write speed to file after new batch of primes has been calculated */
 		if (pc_local_old != pc_local) 
-			fprintf(speed_output, "{x:%u,y:%u},", (unsigned int) time_curr.tv_sec, speed);
+			fprintf(speed_output, "{x:%u,y:%u},", (unsigned int) time_curr.tv_sec, speed_measured);
 		
 		/* sleep for 1s - loop execution time */
 		nanosleep(subtract_nanoseconds(time_nanoseconds(), loop_start), NULL);
 	}
-	fprintf(speed_output, "{x:%u,y:%u},", (unsigned int) time_curr.tv_sec, speed);
+	speed_measured = (prime_counter - pc_local_old) / subtract_nanoseconds_float(time_nanoseconds(), time_speed); 
+	fprintf(speed_output, "{x:%u,y:%u},", (unsigned int) time_curr.tv_sec, speed_measured);
 	if (pc_local != 0) 
 		fseek(speed_output, -1, SEEK_CUR);
 	fprintf(speed_output, "]"); 
@@ -120,13 +121,6 @@ get_primes(prime_type start, prime_type end)
 			continue;
 		if (is_prime(candidate)) 
 		{
-			/*
-			if (prime_on_thread_counter[this_thread()] >= max_primes_on_thread[this_thread()])
-			{
-				max_primes_on_thread[this_thread()]++;
-				realloc(primes_on_thread[this_thread()], max_primes_on_thread[this_thread()]);
-			}
-			*/
 			primes_on_thread[omp_get_thread_num()]
 			                [prime_on_thread_counter[omp_get_thread_num()]]  = candidate;
 			prime_on_thread_counter[omp_get_thread_num()]++;
